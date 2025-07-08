@@ -1,0 +1,54 @@
+general:
+  root_dir: null
+  device: "cuda"  # Will be overridden programmatically
+  dtype: "float32"  # Will be converted to torch.dtype
+  seed: null
+  batch_size: 512
+  num_samples: 1000
+
+model:
+  batchnorm: true
+  dilations: 1
+  channels: [1, 8, 16, 32, 64, 128, 128, 256, 256, 3]
+  kernel_sizes: [13, 13, 13, 13, 13, 13, 13, 13, 3]
+  num_layers: 9
+  dropout_rate: 0.2
+
+data:
+  total_duration_distribution: [100, 500]
+  snr_distribution: 1000
+  stat_snr_distribution: 20
+  duration_distribution: [5, 60]
+  amplitude_distribution: null
+  amplitude_by_duration_distribution: ['ModulatedGaussian', 0, 1, 1]
+  refractory_distribution: [0., 1.5]
+  max_submovements: null
+  refractory_mode: "percentages"
+  standardize: false
+  one_sign_chance: 0
+  hard_refractory_chance: 0
+  easy_refractory_chance: 0
+  noise_mode: "gaussian"
+  combined_dataset: false
+
+training:
+  learning_rate: 1.0e-3
+  lr_decay_start: 30
+  lr_decay_end: 31
+  lr_decay_total_change: 1
+  num_epochs: 25
+  reconstruction_loss_start: 10
+  use_reconstruction_loss: false
+  bn_dropout_freeze_start: 20
+  start_with_weights: false
+  reconstructions_to_plot: 5
+  log_interval: 10
+  plot_interval: 500
+
+test:
+  pre_padding: 15
+
+paths:
+  datasets_dir: "data"
+  train_datasets: ["steering_tangential_velocity_data.csv", "Fitts_tangential_velocity_data.csv", "object_moving_tangential_velocity_data.csv"]
+  test_datasets: ["crank_tangential_velocity_data.csv", "whacamole_tangential_velocity_data.csv", "pointing_tangential_velocity_data.csv", "tablet_writing_tangential_velocity_data.csv"]
