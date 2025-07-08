@@ -1,4 +1,4 @@
-# SSUMO: Semi-Supervised Submovement Decomposition
+# SSSUMO: Real-Time Semi-Supervised Submovement Decomposition
 
 The repository is not in its final form yet, it will be updated iteratively.
 
