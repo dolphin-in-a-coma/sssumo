@@ -1,6 +1,6 @@
 # SSSUMO: Real-Time Semi-Supervised Submovement Decomposition
 
-The repository is not in its final form yet; it will be updated iteratively.
+The repository for the article "SSSUMO: Real-Time Semi-Supervised Submovement Decomposition". The repository is a work in progress and is going to be refactored.
 
 ## Citation
 
