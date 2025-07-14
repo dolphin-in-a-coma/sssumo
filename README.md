@@ -1,6 +1,22 @@
 # SSSUMO: Real-Time Semi-Supervised Submovement Decomposition
 
-The repository is not in its final form yet, it will be updated iteratively.
+The repository is not in its final form yet; it will be updated iteratively.
+
+## Citation
+
+If you find the work helpful for your research, please cite it as
+
+```
+@misc{rudakov2025sssumorealtimesemisupervisedsubmovement,
+      title={SSSUMO: Real-Time Semi-Supervised Submovement Decomposition}, 
+      author={Evgenii Rudakov and Jonathan Shock and Otto Lappi and Benjamin Ultan Cowley},
+      year={2025},
+      eprint={2507.08028},
+      archivePrefix={arXiv},
+      primaryClass={cs.HC},
+      url={https://arxiv.org/abs/2507.08028}, 
+}
+```
 
 ## Project Structure
 
