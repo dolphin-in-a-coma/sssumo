@@ -2,6 +2,22 @@
 
 The repository for the article "SSSUMO: Real-Time Semi-Supervised Submovement Decomposition". The repository is a work in progress and is going to be refactored.
 
+## Installation
+
+Install directly from GitHub:
+
+```bash
+pip install git+https://github.com/dolphin-in-a-coma/sssumo.git
+```
+
+Or clone and install locally:
+
+```bash
+git clone https://github.com/dolphin-in-a-coma/sssumo.git
+cd sssumo
+pip install .
+```
+
 ## Citation
 
 If you find the work helpful for your research, please cite it as

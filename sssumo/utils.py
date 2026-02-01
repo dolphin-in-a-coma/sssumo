@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import torch
-from models import STEBinarizer, STEContinuousReconstructor
-from data import OrganicDataset, SyntheticDataset
+from .models import STEBinarizer, STEContinuousReconstructor
+from .data import OrganicDataset, SyntheticDataset
 
 import wandb
 

@@ -18,7 +18,7 @@ import random
 
 from collections.abc import Iterable
 
-from models import Reconstructor, STEContinuousReconstructor
+from .models import Reconstructor, STEContinuousReconstructor
 
 import torch
 from torch.distributions import LogNormal, constraints
