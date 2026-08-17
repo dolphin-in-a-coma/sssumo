@@ -17,6 +17,8 @@ from .data import (
     ConditionalSampler,
 )
 
+from .training import train, default_dataset_paths
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -33,4 +35,7 @@ __all__ = [
     "CombinedSyntheticDataset",
     "Sampler1D",
     "ConditionalSampler",
+    # Training
+    "train",
+    "default_dataset_paths",
 ]
