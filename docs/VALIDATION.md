@@ -44,10 +44,10 @@ bit-identical.
 | Label | Stage | Base weights | Seed offset | Status |
 |---|---|---|---|---|
 | stage-1 rerun | 1 | from scratch | 0 | complete, 25 epochs |
-| stage-1 replicate | 1 | from scratch | 1000 | *pending* |
-| A | 2 | published `_24` | 0 | *running* |
-| B | 2 | reproduced `_24` | 0 | *running* |
-| A2 | 2 | published `_24` | 1000 | *running* |
+| stage-1 replicate | 1 | from scratch | 1000 | complete, 25 epochs |
+| A | 2 | published `_24` | 0 | complete |
+| B | 2 | reproduced `_24` | 0 | complete |
+| A2 | 2 | published `_24` | 1000 | complete |
 | B2 | 2 | reproduced `_24` | 1000 | *running* |
 
 ## Result: stage 1 reproduces
@@ -111,6 +111,40 @@ SNR from [10, 50], so a perfectly noiseless input is outside the training
 distribution, and crank is the smoothest signal in the set. Adding mild noise
 restores near-parity. This remains a hypothesis about the cause; the failure mode
 itself is established.
+
+### Putting the discrepancy in scale: a seed replicate
+
+A second pretraining run differing only by `--seed-offset 1000` settles whether
+the gap is meaningful. Synthetic metrics, mean absolute difference over the seven
+ground-truth measures:
+
+| Pair | mean \|Δ\| | max \|Δ\| |
+|---|---:|---:|
+| published vs rerun | **0.0024** | 0.0064 |
+| published vs replicate | 0.0038 | 0.0084 |
+| rerun vs replicate (seed only) | **0.0029** | 0.0082 |
+
+**The distance from the published checkpoint to a reproduction is no larger than
+the distance between two reproductions that differ only by seed.** On the measure
+pretraining actually optimises, reproduction succeeds.
+
+Crank remains the exception, and it is systematic rather than a fluke — both
+reproductions under-detect there, and crank is the *only* dataset beyond
+|ΔR²| = 0.02 for either (3 cells each, one per noise level):
+
+| crank R² | Published | Rerun | Replicate |
+|---|---:|---:|---:|
+| SNR ∞ | 0.6592 | 0.1990 | 0.5875 |
+| SNR 20 | 0.6558 | 0.6312 | 0.6318 |
+| SNR 10 | 0.5853 | 0.5429 | 0.4864 |
+| submovements/s at SNR ∞ | 5.04 | 4.42 | 4.51 |
+
+So the noiseless-crank cell is both **systematically biased** (both reproductions
+detect ~11% fewer submovements than the published checkpoint) and **extremely
+high-variance** (−0.07 versus −0.46 between two seeds). That combination is what
+you expect from an out-of-distribution operating point where a few trials tip
+into catastrophic detection dropout: the direction is reproducible, the magnitude
+is not. The released checkpoint sits on the fortunate side of it.
 
 ## Result: stage 2 reproduces
 
