@@ -114,10 +114,32 @@ Organic test participants, mean R² across datasets: −0.0004 at SNR ∞, +0.00
 SNR 20, −0.0089 at SNR 10. Two of 24 dataset × noise cells exceed |ΔR²| = 0.02,
 both at the noisiest setting (crank −0.042, object_moving −0.026).
 
-Note that fine-tuning lifts organic reconstruction R² from ≈0.88 to ≈0.93, and
-that **the crank/SNR ∞ defect seen in the stage-1 reproduction is absent here** —
-run A was fine-tuned from the released pretrained weights, which do not have it.
-Whether the defect survives fine-tuning is what run B tests.
+Note that fine-tuning lifts organic reconstruction R² from ≈0.88 to ≈0.93.
+
+### The stage-1 crank defect does not survive fine-tuning
+
+Run B was fine-tuned from the *reproduced* pretrained checkpoint — the one
+carrying the crank/SNR ∞ defect. It matches the released fine-tuned checkpoint at
+least as well as run A does:
+
+| | Released | A (from published) | B (from reproduced) |
+|---|---:|---:|---:|
+| crank, SNR ∞ | 0.8894 | 0.8871 | **0.9026** |
+| crank, SNR 20 | 0.9246 | 0.9253 | 0.9177 |
+| crank, SNR 10 | 0.8846 | 0.8425 | 0.8903 |
+| organic mean R², SNR ∞ | 0.9330 | 0.9326 | 0.9326 |
+| organic mean R², SNR 20 | 0.9386 | 0.9390 | 0.9380 |
+| organic mean R², SNR 10 | 0.9109 | 0.9020 | 0.9093 |
+| cells with \|ΔR²\| > 0.02 | — | 2 of 24 | **0 of 24** |
+
+Synthetic deltas for run B are all ≤ 0.009. So the pretraining discrepancy is
+fully repaired by the semi-supervised stage: crank/SNR ∞ goes from 0.199 in the
+reproduced pretrained weights to 0.903 after fine-tuning, against 0.889 for the
+released checkpoint.
+
+That run A shows two outlying cells and run B none also suggests fine-tuning
+run-to-run variation is at least as large as the effect of which pretrained
+checkpoint you start from. The seed replicates (A2, B2) quantify that.
 
 ## Reproducing this
 
