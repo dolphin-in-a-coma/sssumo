@@ -3,7 +3,9 @@
 Can the two checkpoints in `checkpoints/` be reproduced from the configs in this
 repository? This records the attempt, the evidence, and what did not match.
 
-Work in progress — sections marked *pending* are still running.
+**Conclusion: both released checkpoints reproduce.** The residual differences are
+the size of run-to-run variance. One dataset-specific discrepancy in the
+*pretrained* checkpoint is characterised below; it does not survive fine-tuning.
 
 ## The artefacts under test
 
@@ -48,7 +50,12 @@ bit-identical.
 | A | 2 | published `_24` | 0 | complete |
 | B | 2 | reproduced `_24` | 0 | complete |
 | A2 | 2 | published `_24` | 1000 | complete |
-| B2 | 2 | reproduced `_24` | 1000 | *running* |
+| B2 | 2 | reproduced `_24` | 1000 | complete |
+
+All six ran on Colab (L4 and T4) via `scripts/train.py` under
+`scripts/colab/supervise.py`. Four VMs were reclaimed mid-run; each was resumed
+from its last checkpoint with `--resume`, which is why some runs span two wandb
+entries.
 
 ## Result: stage 1 reproduces
 
@@ -194,9 +201,32 @@ fully repaired by the semi-supervised stage: crank/SNR ∞ goes from 0.199 in th
 reproduced pretrained weights to 0.903 after fine-tuning, against 0.889 for the
 released checkpoint.
 
-That run A shows two outlying cells and run B none also suggests fine-tuning
-run-to-run variation is at least as large as the effect of which pretrained
-checkpoint you start from. The seed replicates (A2, B2) quantify that.
+### Reproduction error against run-to-run variance
+
+With the 2×2 complete (base checkpoint × seed), the residuals can be attributed.
+Mean absolute difference over the seven ground-truth synthetic metrics:
+
+| Comparison | Isolates | mean \|Δ\| | max \|Δ\| |
+|---|---|---:|---:|
+| released vs A | reproduction | 0.0030 | 0.0100 |
+| released vs B | reproduction | 0.0021 | 0.0087 |
+| released vs A2 | reproduction | 0.0065 | 0.0156 |
+| released vs B2 | reproduction | 0.0032 | 0.0123 |
+| A vs A2 | **seed only** | 0.0036 | 0.0082 |
+| B vs B2 | **seed only** | 0.0017 | 0.0036 |
+| A vs B | **base only** | 0.0039 | 0.0113 |
+| A2 vs B2 | **base only** | 0.0068 | 0.0196 |
+
+Every quantity is the same order: reproduction error 0.002–0.007, seed variance
+0.002–0.004, base-checkpoint effect 0.004–0.007. **The distance from the released
+checkpoint to a reproduction is not distinguishable from the distance between two
+reproductions.**
+
+Organic mean R² across all five checkpoints spans 0.9324–0.9341 at SNR ∞,
+0.9379–0.9396 at SNR 20 and 0.9020–0.9109 at SNR 10. Cells beyond |ΔR²| = 0.02
+against the released weights: A has 2 of 24, B has 0, A2 has 0, B2 has 1 — and
+crank appears only once, at the noisiest setting. The pretraining crank defect is
+gone from every fine-tuned model.
 
 ## Reproducing this
 
