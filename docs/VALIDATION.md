@@ -83,11 +83,34 @@ Everything else sits within ±0.016. The gap is not sampling noise: at SNR ∞ n
 noise is added and the trial subsample was seeded identically, so both models saw
 identical input. The reproduction under-detects there (5.04 → 4.42 submovements/s).
 
-Candidate explanation, **not yet established**: training samples SNR from [10, 50],
-so a noiseless input is extrapolation, and crank is the smoothest, most periodic
-signal in the set — it was already the second-hardest dataset for the published
-checkpoint. Adding mild noise restores near-parity. Whether this is within
-pretraining run-to-run variance is what the stage-1 replicate is for.
+**Per-trial diagnosis** (`scripts/colab/diagnose_dataset.py`, 64 trials) shows this
+is not a uniform degradation but a small number of catastrophic failures:
+
+| | Published | Reproduced |
+|---|---:|---:|
+| R² mean | 0.665 | 0.222 |
+| R² median | 0.735 | 0.622 |
+| R² min | −0.006 | −6.38 |
+| trials with R² < 0 | 1.6% | 17.2% |
+
+The median falls only 0.11; the 10 worst trials account for **78%** of the total
+negative delta, and 12 of 64 are worse by more than 0.5.
+
+![worst crank trials](crank_snr_inf_worst_trials.png)
+
+The mechanism is visible in those trials: crank is continuous rotation, so the
+clean signal is a sustained level with small ripples. The reproduced model
+intermittently **stops emitting onsets** across such stretches, and because the
+reconstruction is a sum of bells anchored at detected onsets, it collapses toward
+zero in the gaps and recovers afterwards. That is detection dropout, not an
+amplitude error, and it matches the lower detection rate (5.04 → 4.42
+submovements/s).
+
+Why it appears only at SNR ∞ is consistent with extrapolation: training samples
+SNR from [10, 50], so a perfectly noiseless input is outside the training
+distribution, and crank is the smoothest signal in the set. Adding mild noise
+restores near-parity. This remains a hypothesis about the cause; the failure mode
+itself is established.
 
 ## Result: stage 2 reproduces
 
