@@ -89,18 +89,35 @@ signal in the set — it was already the second-hardest dataset for the publishe
 checkpoint. Adding mild noise restores near-parity. Whether this is within
 pretraining run-to-run variance is what the stage-1 replicate is for.
 
-## Result: stage 2 — *pending*
+## Result: stage 2 reproduces
 
-Interim, from the training trajectory (run A against published `jbj4im5v`,
-epoch-aligned by step):
+Run A (fine-tuned from the released pretrained checkpoint, as the config
+specifies) against the released fine-tuned checkpoint.
 
-| Metric | Max |Δ| over comparable epochs |
-|---|---|
-| Onset precision | 0.0055 |
-| Onset recall | 0.0095 |
-| Detection loss | 0.0095 |
+**Trajectory.** Against the published run `jbj4im5v`, epoch-aligned by step:
+onset precision differs by at most 0.0055, recall by 0.0095, detection loss by
+0.0095, at every comparable epoch.
 
-Final checkpoint comparison pending run completion.
+**Behaviour.** Synthetic evaluation, mean over 9 noise × refractory conditions:
+
+| Metric | Released | Reproduced | Δ |
+|---|---:|---:|---:|
+| Onset precision | 0.8116 | 0.8017 | −0.0100 |
+| Onset recall | 0.8811 | 0.8807 | −0.0004 |
+| Onset F1 | 0.8440 | 0.8381 | −0.0059 |
+| Onset distance | 0.8187 | 0.8160 | −0.0026 |
+| Reconstruction R² | 0.9856 | 0.9849 | −0.0006 |
+| Amplitude R² | 0.8455 | 0.8446 | −0.0009 |
+| Duration R² | 0.8045 | 0.8039 | −0.0006 |
+
+Organic test participants, mean R² across datasets: −0.0004 at SNR ∞, +0.0004 at
+SNR 20, −0.0089 at SNR 10. Two of 24 dataset × noise cells exceed |ΔR²| = 0.02,
+both at the noisiest setting (crank −0.042, object_moving −0.026).
+
+Note that fine-tuning lifts organic reconstruction R² from ≈0.88 to ≈0.93, and
+that **the crank/SNR ∞ defect seen in the stage-1 reproduction is absent here** —
+run A was fine-tuned from the released pretrained weights, which do not have it.
+Whether the defect survives fine-tuning is what run B tests.
 
 ## Reproducing this
 
