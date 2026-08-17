@@ -133,8 +133,8 @@ def build_organic_statistics_dataset(config, dataset2path, dataset2stats_path, b
         batch_size=config.batch_size, dtype=config.dtype, device=config.device)
 
 
-def train(config, dataset2path=None, organic_eval_every=5, eval_datapoints=None,
-          resume=False, plot=False):
+def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=1,
+          eval_datapoints=None, resume=False, plot=False):
     """Train a detector as described by `config`.
 
     Args:
@@ -142,6 +142,9 @@ def train(config, dataset2path=None, organic_eval_every=5, eval_datapoints=None,
         dataset2path: {name: csv path} for the organic data; defaults to
             `default_dataset_paths(config)`.
         organic_eval_every: epochs between organic test evaluations; 0 disables.
+        synthetic_eval_every: epochs between synthetic evaluations; 0 disables.
+            Each one sweeps 9 noise x refractory conditions at 512 trials of 1000
+            samples, which is slow without a GPU.
         eval_datapoints: cap on trials per evaluation. `None` uses every trial, as
             the published run did. Small values can leave a pooled-statistics
             column entirely NaN, which raises in `calculate_and_log_metrics_organic`.
@@ -458,14 +461,15 @@ def train(config, dataset2path=None, organic_eval_every=5, eval_datapoints=None,
         log(message, config.log_file)
 
         model.eval()
-        evaluate_on_synthetic_data(
-            model=model,
-            noise_conditions=NOISE_CONDITIONS,
-            refractory_conditions=REFRACTORY_CONDITIONS,
-            config=config,
-            reconsturctor=reconstructor,
-            step=len(dataloader) * (epoch + 1),
-        )
+        if synthetic_eval_every and (epoch + 1) % synthetic_eval_every == 0:
+            evaluate_on_synthetic_data(
+                model=model,
+                noise_conditions=NOISE_CONDITIONS,
+                refractory_conditions=REFRACTORY_CONDITIONS,
+                config=config,
+                reconsturctor=reconstructor,
+                step=len(dataloader) * (epoch + 1),
+            )
 
         if organic_eval_every and (epoch + 1) % organic_eval_every == 0:
             evaluate_on_organic_data(

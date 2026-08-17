@@ -47,6 +47,8 @@ def parse_args():
                         help='override trials per step')
     parser.add_argument('--organic-eval-every', type=int, default=5,
                         help='epochs between organic test evaluations; 0 disables')
+    parser.add_argument('--synthetic-eval-every', type=int, default=1,
+                        help='epochs between synthetic evaluations; 0 disables')
     parser.add_argument('--eval-datapoints', type=int, default=None,
                         help='cap trials per organic evaluation (smoke tests)')
     parser.add_argument('--wandb-project', default='submovement_detector',
@@ -93,6 +95,7 @@ def main():
     try:
         train(config,
               organic_eval_every=args.organic_eval_every,
+              synthetic_eval_every=args.synthetic_eval_every,
               eval_datapoints=args.eval_datapoints,
               resume=args.resume,
               plot=False)
