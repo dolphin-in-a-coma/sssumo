@@ -21,6 +21,8 @@ ap.add_argument("--final-suffix", default=None,
                 help="stop once a checkpoint with this suffix is secured, e.g. _9.pth")
 ap.add_argument("--interval", type=int, default=240)
 ap.add_argument("--hours", type=float, default=3.5)
+ap.add_argument("--endpoint", default=None,
+                help="the session's endpoint; passed to remint so recovery cannot\n bind a different run's VM. Strongly recommended when several runs are live")
 ap.add_argument("--cli-python", default=None,
                 help="interpreter that has colab_cli installed; "
                      "defaults to reading the shebang of `which colab`")
@@ -55,7 +57,8 @@ def sh(cmd, timeout=420):
 
 
 def remint():
-    r = sh(f"{CLI_PY} {HERE}/remint.py {SESSION}")
+    target = f"{SESSION} {a.endpoint}" if a.endpoint else f"{SESSION} --any"
+    r = sh(f"{CLI_PY} {HERE}/remint.py {target}")
     print(f"  remint: {(r.stdout or r.stderr).strip()[:90]}", flush=True)
     return r.returncode == 0
 

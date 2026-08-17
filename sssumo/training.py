@@ -134,7 +134,7 @@ def build_organic_statistics_dataset(config, dataset2path, dataset2stats_path, b
 
 
 def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=1,
-          eval_datapoints=None, resume=False, plot=False):
+          eval_datapoints=None, resume=False, plot=False, seed_offset=0):
     """Train a detector as described by `config`.
 
     Args:
@@ -151,6 +151,10 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
         resume: continue from the highest epoch checkpoint in weights/, ignoring
             `config.start_with_weights`.
         plot: draw reconstruction and evaluation figures (useful in a notebook).
+        seed_offset: shifts the per-epoch dataset seed. The synthetic stream is
+            derived from `dataset.seed`, which is set to the epoch number, so
+            `config.seed` does not affect training data -- two runs of the same
+            config see identical trials. Use a nonzero offset for a replicate.
 
     Returns:
         Path of the last checkpoint written, or None if no epoch completed.
@@ -218,7 +222,7 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
     checkpoint_path = None
 
     for epoch in range(latest_epoch + 1, config.num_epochs):
-        dataset.seed = epoch  # Update seed for each epoch
+        dataset.seed = epoch + seed_offset  # drives the whole synthetic stream
         detection_loss_mean = 0
         duration_loss_mean = 0
         amplitude_loss_mean = 0

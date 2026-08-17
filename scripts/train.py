@@ -54,6 +54,10 @@ def parse_args():
                         help='epochs between organic test evaluations; 0 disables')
     parser.add_argument('--synthetic-eval-every', type=int, default=1,
                         help='epochs between synthetic evaluations; 0 disables')
+    parser.add_argument('--seed-offset', type=int, default=0,
+                        help='shift the per-epoch dataset seed, for replicate runs. '
+                             'config.seed does not affect the training stream, so this '
+                             'is the way to get a genuinely different one')
     parser.add_argument('--eval-datapoints', type=int, default=None,
                         help='cap trials per organic evaluation (smoke tests)')
     parser.add_argument('--wandb-project', default='submovement_detector',
@@ -107,6 +111,7 @@ def main():
               synthetic_eval_every=args.synthetic_eval_every,
               eval_datapoints=args.eval_datapoints,
               resume=args.resume,
+              seed_offset=args.seed_offset,
               plot=False)
     finally:
         if use_wandb:

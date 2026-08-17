@@ -18,7 +18,8 @@ from colab_cli.common import state
 from colab_cli.state import SessionState
 
 name = sys.argv[1]
-endpoint = sys.argv[2] if len(sys.argv) > 2 else None
+endpoint = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] != "--any" else None
+allow_any = "--any" in sys.argv[2:]
 
 assignments = list(state.client.list_assignments())
 if not assignments:
@@ -26,11 +27,16 @@ if not assignments:
 
 if endpoint:
     match = next((a for a in assignments if a.endpoint == endpoint), None)
-elif len(assignments) == 1:
+elif allow_any and len(assignments) == 1:
     match = assignments[0]
 else:
-    raise SystemExit("several assignments live; pass the endpoint explicitly:\n  "
-                     + "\n  ".join(a.endpoint for a in assignments))
+    # Binding whatever happens to be live is how a session name silently gets
+    # re-pointed at a DIFFERENT run's VM: if the one you wanted was reclaimed and
+    # another is still up, "the only live assignment" is the wrong machine.
+    raise SystemExit(
+        "pass the endpoint explicitly (or --any if you are certain there is only\n"
+        "one run and it is the one you want). Live assignments:\n  "
+        + "\n  ".join(f"{a.endpoint}  ({a.accelerator.name})" for a in assignments))
 
 if match is None:
     raise SystemExit(f"endpoint {endpoint} is not live -- the VM is gone")
