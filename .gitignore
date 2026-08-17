@@ -17,3 +17,6 @@ wandb/
 *pulled_stats*.csv
 *.state.json
 *.log
+
+# Executed notebooks (can be tens of MB of embedded figures)
+*_output.ipynb

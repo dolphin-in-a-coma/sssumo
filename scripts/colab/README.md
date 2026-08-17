@@ -88,16 +88,69 @@ If a VM is lost, set `"resume": true` to continue from the highest epoch
 checkpoint present. The configs' own `start_with_weights: false` would silently
 restart from zero.
 
+## Other tools here
+
+| Script | Runs on | Purpose |
+|---|---|---|
+| `remint.py` | locally | rebuild a pruned session record from a live assignment |
+| `checkpoint_puller.py` | locally | download checkpoints from an ephemeral VM as they appear |
+| `compare_checkpoints.py` | the VM | paired comparison of two checkpoints on identical data |
+| `wandb_query.py` | locally | query the wandb API using `~/.netrc`, nothing installed |
+
 ## Cost of a run
 
-Measured on a T4, stage-1 pretraining (`config-0423-ModGaussian_ampl`):
+Measured 2026-08-17. Stage-1 pretraining (`config-0423-ModGaussian_ampl`):
 
-| | |
+| | T4 | L4 |
+|---|---|---|
+| Training | ~0.7 s/step, ~11 min/epoch | ~0.48 s/step, ~4.8 min/epoch |
+| 25 epochs | ~4.3 h | ~2 h |
+
+| Fixed costs | |
 |---|---|
-| Training | ~0.7 s/step, ~10 min per 1000-step epoch |
-| Synthetic evaluation | ~6 s/epoch (9 noise × refractory conditions) |
-| Organic evaluation | ~7 s per dataset load, 21 loads per evaluation |
-| 25 epochs | ~4.3 h |
+| Clone + `pip install .` | ~60 s |
+| Data staging | 84 s from a Drive folder, ~150–180 s from the public zip |
+| Synthetic evaluation | ~6 s/epoch on GPU (minutes on CPU — use `--synthetic-eval-every 0`) |
+| Organic evaluation | ~7 s per dataset load, 21 loads per full evaluation |
+
+**Stage-2 fine-tuning is dominated by statistics extraction, not training.** Each
+epoch re-runs the model over the training participants of every dataset and
+refits the `fastkde` conditional distributions. At `--eval-datapoints 128` one
+extraction pass is ~50 s; uncapped it is several times that, and it happens once
+at step 0 plus once per epoch.
+
+## When a session "disappears"
+
+`colab exec` returning 404/401 usually does **not** mean the VM is gone — the
+CLI caches a proxy token that expires after about an hour, and on failure it
+prunes the local record. Check before doing anything destructive:
+
+```bash
+colab --auth=oauth2 sessions          # queries the server; orphans show as [?]
+```
+
+If the endpoint is still listed, the VM is alive and whatever you launched
+detached is still running. Recover the record instead of allocating a new VM:
+
+```bash
+<cli-python> scripts/colab/remint.py <session-name> [endpoint]
+```
+
+If the endpoint is absent, the VM really was reclaimed; resume from the last
+checkpoint with `--resume`.
+
+The underlying cause is usually a missing `colaboratory` OAuth scope, which stops
+the keep-alive daemon refreshing — and then the VM *does* get reclaimed, mid-run.
+Check with `colab --auth=oauth2 whoami`; if `https://www.googleapis.com/auth/colaboratory`
+is not listed, force a fresh consent flow:
+
+```bash
+rm ~/.config/colab-cli/token.json && colab --auth=oauth2 sessions
+```
+
+Back up `~/.config/colab-cli/sessions.json` *after* creating a session, not
+before — `colab new` prunes stale records, and copying at the wrong moment
+overwrites a good backup with an empty one.
 
 ## Two things that will bite you
 
