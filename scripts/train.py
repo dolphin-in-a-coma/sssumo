@@ -38,7 +38,12 @@ def parse_args():
                              'avoid overwriting an earlier run')
     parser.add_argument('--resume', action='store_true',
                         help='continue from the highest epoch checkpoint already in weights/, '
-                             'ignoring start_with_weights in the config')
+                             'ignoring start_with_weights in the config; takes precedence '
+                             'over --start-with-weights')
+    parser.add_argument('--start-with-weights', default=None,
+                        help="override the config's start_with_weights: a checkpoint filename "
+                             "inside weights/, or 'Xavier'. Use this to fine-tune from a "
+                             'different pretrained checkpoint without editing the config')
     parser.add_argument('--num-samples', type=int, default=None,
                         help='override optimizer steps per epoch (smoke tests)')
     parser.add_argument('--num-epochs', type=int, default=None,
@@ -80,6 +85,10 @@ def main():
     config = Config(args.config, root_dir=args.root_dir)
     config.experiment_name = (args.experiment_name
                               or os.path.basename(args.config).replace('.yaml', ''))
+
+    if args.start_with_weights is not None:
+        # train(resume=True) overwrites this again, which is the documented precedence
+        config.start_with_weights = args.start_with_weights
 
     if args.num_samples is not None:
         config.num_samples = args.num_samples
