@@ -1,0 +1,30 @@
+{
+  "_comment": "Copy to run.local.json (gitignored) and edit. Paths here are read by the vm_*.py tools on the Colab VM, which receive no argv when invoked through 'colab exec -f'.",
+
+  "session": "sssumo-pretrain",
+  "repo": "https://github.com/dolphin-in-a-coma/sssumo.git",
+  "commit": "319df0cb1905a5374b0d3580791a265bd45ac6a7",
+
+  "root_dir": "/content/sssumo_run",
+  "data_source": "url:https://datacloud.helsinki.fi/public.php/dav/files/bE7SP7xCrSyApeC/?accept=zip",
+  "_data_source_note": "'url:<zip>' downloads the public dataset onto the VM. 'drive:/content/drive/MyDrive/<folder>' instead copies from a mounted Drive folder that already holds data/, weights/ and logs/ -- run 'colab drivemount' yourself first, it needs a TTY.",
+
+  "persist_to_drive": false,
+  "_persist_note": "With a drive: source, symlink weights/ and logs/ into Drive so checkpoints survive the VM. With a url: source, poll and download them instead.",
+
+  "config": "/content/sssumo/configs/config-0423-ModGaussian_ampl.yaml",
+  "experiment_name": "my-pretraining-run",
+  "_experiment_note": "Must differ from any released checkpoint name, or the final epoch overwrites it.",
+
+  "organic_eval_every": 5,
+  "eval_datapoints": null,
+  "_eval_datapoints_note": "null uses every trial, as the published run did. Small values (<32) can make a pooled-statistics column all-NaN and crash the evaluation.",
+
+  "num_samples": null,
+  "num_epochs": null,
+  "resume": false,
+
+  "wandb_project": "submovement_detector",
+  "wandb_key_file": "/content/.wandb_key",
+  "_wandb_note": "Upload the key as a file; never put it in this config, in argv, or in the repo."
+}
