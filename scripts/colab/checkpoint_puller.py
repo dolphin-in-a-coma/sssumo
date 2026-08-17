@@ -52,8 +52,22 @@ with open(list_path, "w") as f:
     f.write(LIST_SCRIPT)
 
 
+class _Failed:
+    """Stand-in for a call that never returned; keeps the poll loop alive."""
+    returncode = 1
+    stdout = stderr = ""
+
+
 def sh(cmd, timeout=420):
-    return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+    # A busy kernel can push `colab exec` past the wall clock. Letting
+    # TimeoutExpired propagate kills the puller and silently stops protecting
+    # the run, which is the opposite of this script's job.
+    try:
+        return subprocess.run(cmd, shell=True, capture_output=True,
+                              text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print("  call timed out; will retry next cycle", flush=True)
+        return _Failed()
 
 
 def remint():
