@@ -56,7 +56,7 @@ def parse_args():
     p.add_argument('--trials', type=int, default=128, help='organic trials per dataset')
     p.add_argument('--seed', type=int, default=0)
     p.add_argument('--organic-interval', default='cluster-bootstrap',
-                   choices=['cluster-bootstrap', 'participant-t', 'both'],
+                   choices=['cluster-bootstrap', 'participant-t', 'participant-spread', 'both'],
                    help="how to build organic intervals: the hierarchical bootstrap, a "
                         "t interval over per-participant means, or both side by side")
     p.add_argument('--dump-per-trial', default=None, metavar='DIR',
@@ -122,6 +122,30 @@ def participant_t_interval(frame, metric, confidence=0.95):
     sem = per_participant.std(ddof=1) / np.sqrt(n)
     half = stats.t.ppf(1 - (1 - confidence) / 2, df=n - 1) * sem
     return mean, float(mean - half), float(mean + half), n
+
+
+def participant_spread(frame, metric, min_n_for_percentile=40):
+    """Median across participants, with a descriptive spread.
+
+    This describes how much PARTICIPANTS differ, not how uncertain the mean is --
+    a different quantity from participant_t_interval, and usually the more useful
+    one for characterising a model's consistency across people.
+
+    The 2.5/97.5 percentiles need enough participants to be estimable at all:
+    below n = 40 the 2.5th percentile sits outside the smallest observation, so
+    min/max is reported instead and labelled as such.
+    """
+    per = frame.groupby('Participant')[metric].mean().to_numpy(float)
+    per = per[np.isfinite(per)]
+    n = per.size
+    if n == 0:
+        return float('nan'), float('nan'), float('nan'), 0, 'none'
+    if n >= min_n_for_percentile:
+        lo, hi = np.percentile(per, [2.5, 97.5])
+        kind = 'p2.5-p97.5'
+    else:
+        lo, hi, kind = per.min(), per.max(), 'min-max'
+    return float(np.median(per)), float(lo), float(hi), n, kind
 
 
 def iid_bootstrap(values, n_simulations, confidence=0.95):
@@ -249,6 +273,18 @@ def main():
             if args.dump_per_trial:
                 os.makedirs(args.dump_per_trial, exist_ok=True)
                 frame.to_csv(f'{args.dump_per_trial}/organic.{label}.csv', index=False)
+            if args.organic_interval == 'participant-spread' and not args.skip_bootstrap:
+                for (dataset, noise), group in frame.groupby(['Dataset', 'Noise_Condition']):
+                    for metric in REPORT:
+                        if metric not in group:
+                            continue
+                        med, lo, hi, n, kind = participant_spread(group, metric)
+                        records.append(dict(
+                            checkpoint=label, domain='organic',
+                            group=f'{dataset}/snr{noise}', metric=metric, mean=med,
+                            lower=lo, upper=hi, n_units=n, unit='participant',
+                            method=f'participant-spread ({kind})'))
+
             if args.organic_interval in ('participant-t', 'both') and not args.skip_bootstrap:
                 for (dataset, noise), group in frame.groupby(['Dataset', 'Noise_Condition']):
                     for metric in REPORT:
@@ -261,7 +297,8 @@ def main():
                             lower=lo, upper=hi, n_units=n, unit='participant',
                             method='participant-t'))
 
-            skip_boot = args.skip_bootstrap or args.organic_interval == 'participant-t'
+            skip_boot = (args.skip_bootstrap or
+                         args.organic_interval in ('participant-t', 'participant-spread'))
             for dataset, group in ([] if skip_boot else frame.groupby('Dataset')):
                 result = hierarchical_bootstrap_metrics(
                     group, n_simulations=args.bootstrap,
