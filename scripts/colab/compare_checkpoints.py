@@ -27,6 +27,7 @@ matplotlib.use('Agg')
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from scipy import stats  # noqa: E402
 import torch  # noqa: E402
 
 from sssumo.data import SyntheticDataset  # noqa: E402
@@ -110,6 +111,39 @@ def report_intervals(delta, label, reference_label, n_simulations, metrics=None)
     return combined
 
 
+def paired_participant_t(delta, metric, confidence=0.95):
+    """Paired t over per-participant mean differences, one row per dataset x noise.
+
+    The participant is the unit of analysis: each contributes one difference (the
+    mean of their per-trial differences), and the test is the ordinary paired t.
+    Pairing is exact because both checkpoints saw the same trials.
+
+    This is the analysis whose degrees of freedom match the design. A large effect
+    on five participants can be non-significant while a 0.005 effect on 128 is
+    highly significant -- both are correct, and the trial-level view shows neither.
+    """
+    rows = []
+    for (dataset, noise), group in delta.groupby(['Dataset', 'Noise_Condition']):
+        if dataset == 'synthetic' or metric not in group:
+            continue
+        per = group.groupby('Participant')[metric].mean().to_numpy(float)
+        per = per[np.isfinite(per)]
+        n = per.size
+        if n < 2:
+            rows.append(dict(Dataset=dataset, Noise_Condition=noise, n=n,
+                             Mean=float(per.mean()) if n else np.nan,
+                             Lower_CI=np.nan, Upper_CI=np.nan, p=np.nan))
+            continue
+        half = stats.t.ppf(1 - (1 - confidence) / 2, n - 1) * per.std(ddof=1) / np.sqrt(n)
+        _, pval = stats.ttest_1samp(per, 0.0)
+        rows.append(dict(Dataset=dataset, Noise_Condition=noise, n=n, Mean=float(per.mean()),
+                         Lower_CI=float(per.mean() - half), Upper_CI=float(per.mean() + half),
+                         p=float(pval)))
+    out = pd.DataFrame(rows)
+    out['Excludes_0'] = ~((out.Lower_CI <= 0) & (out.Upper_CI >= 0))
+    return out
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -125,6 +159,9 @@ def parse_args():
                         'checkpoint over N resamples, resampling participants. 0 disables. '
                         'Pairing is exact because every checkpoint sees identically seeded '
                         'trials, which removes trial-level variance from the interval.')
+    p.add_argument('--paired-t', action='store_true',
+                   help='also report a paired t over per-participant mean differences, '
+                        'whose degrees of freedom match the design')
     p.add_argument('--bootstrap-metrics', nargs='*',
                    default=['Reconstruction_R2', 'Number_of_submovements_per_second'],
                    help='which metrics to report intervals for; empty means all')
@@ -271,6 +308,14 @@ def main():
                                        metrics=args.bootstrap_metrics)
             if args.out:
                 summary.to_csv(f'{args.out}.bootstrap.{label}.csv', index=False)
+            if args.paired_t:
+                for metric in (args.bootstrap_metrics or ['Reconstruction_R2']):
+                    tt = paired_participant_t(delta, metric)
+                    print(f"\n--- paired participant t: {label} - {reference}, {metric} ---",
+                          flush=True)
+                    print(tt.to_string(index=False), flush=True)
+                    if args.out:
+                        tt.to_csv(f'{args.out}.paired_t.{label}.{metric}.csv', index=False)
 
     print('\nCOMPARE OK', flush=True)
 

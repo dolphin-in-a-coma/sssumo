@@ -30,6 +30,7 @@ matplotlib.use('Agg')
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from scipy import stats  # noqa: E402
 import torch  # noqa: E402
 
 from sssumo.data import SyntheticDataset  # noqa: E402
@@ -54,6 +55,10 @@ def parse_args():
     p.add_argument('--bootstrap', type=int, default=2000)
     p.add_argument('--trials', type=int, default=128, help='organic trials per dataset')
     p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--organic-interval', default='cluster-bootstrap',
+                   choices=['cluster-bootstrap', 'participant-t', 'both'],
+                   help="how to build organic intervals: the hierarchical bootstrap, a "
+                        "t interval over per-participant means, or both side by side")
     p.add_argument('--dump-per-trial', default=None, metavar='DIR',
                    help='write per-trial values (with sufficient statistics for pooled '
                         'metrics) so band variants can be recomputed without a GPU')
@@ -92,6 +97,31 @@ def to_array(value):
         return np.array([v.detach().cpu().item() if torch.is_tensor(v) else v
                          for v in value])
     return np.atleast_1d(value)
+
+
+def participant_t_interval(frame, metric, confidence=0.95):
+    """Mean +/- t CI over per-participant scores.
+
+    The participant, not the trial, is the unit of analysis: each participant
+    contributes one number (the mean over their trials), and the interval is the
+    ordinary t interval across those numbers. No resampling, nothing to tune, and
+    the degrees of freedom make the real sample size visible -- with n = 2 the
+    interval is enormous, which is the honest answer rather than a hidden one.
+
+    Trials per participant are unbalanced, so this weights every participant
+    equally regardless of how many trials they contributed. That is usually what
+    is wanted for a population claim; it is not the same estimand as the
+    trial-weighted mean.
+    """
+    per_participant = frame.groupby('Participant')[metric].mean().to_numpy(float)
+    per_participant = per_participant[np.isfinite(per_participant)]
+    n = per_participant.size
+    mean = float(per_participant.mean()) if n else float('nan')
+    if n < 2:
+        return mean, float('nan'), float('nan'), n
+    sem = per_participant.std(ddof=1) / np.sqrt(n)
+    half = stats.t.ppf(1 - (1 - confidence) / 2, df=n - 1) * sem
+    return mean, float(mean - half), float(mean + half), n
 
 
 def iid_bootstrap(values, n_simulations, confidence=0.95):
@@ -208,7 +238,7 @@ def main():
                     mean, lo, hi, n = iid_bootstrap(group[metric], args.bootstrap)
                     records.append(dict(checkpoint=label, domain='synthetic', group=name,
                                         metric=metric, mean=mean, lower=lo, upper=hi,
-                                        n_units=n, unit='trial'))
+                                        n_units=n, unit='trial', method='trial-bootstrap'))
             print(f'  synthetic: {len(frame)} trials over {frame.groupby(["Noise","Refractory"]).ngroups} conditions',
                   flush=True)
 
@@ -219,7 +249,20 @@ def main():
             if args.dump_per_trial:
                 os.makedirs(args.dump_per_trial, exist_ok=True)
                 frame.to_csv(f'{args.dump_per_trial}/organic.{label}.csv', index=False)
-            for dataset, group in ([] if args.skip_bootstrap else frame.groupby('Dataset')):
+            if args.organic_interval in ('participant-t', 'both') and not args.skip_bootstrap:
+                for (dataset, noise), group in frame.groupby(['Dataset', 'Noise_Condition']):
+                    for metric in REPORT:
+                        if metric not in group:
+                            continue
+                        mean, lo, hi, n = participant_t_interval(group, metric)
+                        records.append(dict(
+                            checkpoint=label, domain='organic',
+                            group=f'{dataset}/snr{noise}', metric=metric, mean=mean,
+                            lower=lo, upper=hi, n_units=n, unit='participant',
+                            method='participant-t'))
+
+            skip_boot = args.skip_bootstrap or args.organic_interval == 'participant-t'
+            for dataset, group in ([] if skip_boot else frame.groupby('Dataset')):
                 result = hierarchical_bootstrap_metrics(
                     group, n_simulations=args.bootstrap,
                     sample_participants=True, sample_datasets=False,
@@ -235,7 +278,8 @@ def main():
                         group=f"{dataset}/snr{row['Noise_Condition']}",
                         metric=row['Metric'], mean=row['Mean'],
                         lower=row['Lower_CI'], upper=row['Upper_CI'],
-                        n_units=n_participants, unit='participant'))
+                        n_units=n_participants, unit='participant',
+                        method='cluster-bootstrap'))
 
     scores = pd.DataFrame(records)
     scores.to_csv(args.out, index=False)
