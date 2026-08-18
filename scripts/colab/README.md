@@ -96,6 +96,13 @@ restart from zero.
 | `checkpoint_puller.py` | locally | download checkpoints from an ephemeral VM as they appear |
 | `compare_checkpoints.py` | the VM | paired comparison of two checkpoints on identical data |
 | `wandb_query.py` | locally | query the wandb API using `~/.netrc`, nothing installed |
+| `wandb_compare_runs.py` | locally | per-epoch trajectory comparison between runs |
+| `score_checkpoints.py` | the VM | absolute scores with intervals, both domains |
+| `diagnose_dataset.py` | the VM | per-trial diagnosis of a gap between two checkpoints |
+
+For which interval to use and why it matters, see the `sssumo-evaluation` skill in
+`.agent/skills/` — the unit of analysis changes conclusions on this data, not just
+decimal places.
 
 ## Cost of a run
 
