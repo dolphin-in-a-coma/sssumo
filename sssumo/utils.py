@@ -342,7 +342,12 @@ def calculate_reconstruction_metrics(x_clean, y_pred, reconstructed_x, bootstrap
                 reconstruction_r2.append(r2_score(x_clean_np, reconstructed_x_np))
                 reconstruction_mase.append(mase(x_clean_np, reconstructed_x_np))
                 reconstruction_smape.append(smape(x_clean_np, reconstructed_x_np))
-                number_of_submovements_per_sample.append((STEBinarizer.apply(mask_pred, False, peaks_only).sum() / mask_pred.numel()).item())
+                # mask_pred[i:i+1] keeps the 2D shape STEBinarizer needs. Using the
+                # whole batch here made every 'per-trial' value the batch mean.
+                trial_mask = mask_pred[i:i + 1]
+                number_of_submovements_per_sample.append(
+                    (STEBinarizer.apply(trial_mask, False, peaks_only).sum()
+                     / trial_mask.numel()).item())
 
             reconstruction_r2 = np.array(reconstruction_r2)
             reconstruction_mase = np.array(reconstruction_mase)
