@@ -79,6 +79,16 @@ def load(path, config):
     return model
 
 
+def to_array(value):
+    """Metric series arrive as tensors, lists of tensors, or plain numbers."""
+    if torch.is_tensor(value):
+        return np.atleast_1d(value.detach().cpu().numpy())
+    if isinstance(value, (list, tuple)):
+        return np.array([v.detach().cpu().item() if torch.is_tensor(v) else v
+                         for v in value])
+    return np.atleast_1d(value)
+
+
 def iid_bootstrap(values, n_simulations, confidence=0.95):
     """Percentile bootstrap of the mean for independent observations."""
     values = np.asarray([v for v in values if np.isfinite(v)], dtype=float)
@@ -119,17 +129,12 @@ def synthetic_per_trial(model, config, reconstructor, seed):
                     x_clean, y_pred, reconstructed, score_for_each_element=True)
                 sup = calculate_supervised_metrics(y, y_pred, score_for_each_element=True)
             merged = {**rec, **sup}
-            first = merged['Reconstruction_R2']
-            if torch.is_tensor(first):
-                first = first.detach().cpu().numpy()
-            n = len(np.atleast_1d(first))
+            n = len(to_array(merged['Reconstruction_R2']))
             for i in range(n):
                 row = {'Noise': str(noise),
                        'Refractory': f'{refractory[0]}-{refractory[1]}'}
                 for key, value in merged.items():
-                    if torch.is_tensor(value):
-                        value = value.detach().cpu().numpy()
-                    array = np.atleast_1d(value)
+                    array = to_array(value)
                     if array.size == n:
                         row[key] = float(array[i])
                 rows.append(row)
