@@ -265,6 +265,74 @@ object_moving (n = 5) rest on very few clusters and should be read as indicative
 only. That is a direct caveat on the crank finding, which is the one result this
 whole exercise turned on: it is based on five test participants.
 
+## Absolute scores with confidence bands
+
+`scripts/colab/score_checkpoints.py` reports each checkpoint's own score with a
+95% interval, rather than a difference. The resampling unit differs by domain:
+synthetic trials are independent draws from the generator (i.i.d. bootstrap over
+trials, 4608 per checkpoint), organic trials cluster within participant
+(participants resampled, 2688 trials over 243 participants). 2000 resamples.
+Full table in `docs/scores_with_intervals.csv`.
+
+### Synthetic, pooled over all 9 noise × refractory conditions
+
+| Checkpoint | Onset F1 | Reconstruction R² | Amplitude R² |
+|---|---|---|---|
+| pretrained, released | 0.8466 [0.8429, 0.8503] | 0.9839 [0.9834, 0.9844] | 0.8421 [0.8361, 0.8479] |
+| pretrained, rerun | 0.8503 [0.8465, 0.8541] | 0.9861 [0.9857, 0.9866] | 0.8396 [0.8335, 0.8455] |
+| pretrained, rerun s1000 | 0.8518 [0.8479, 0.8555] | 0.9848 [0.9843, 0.9853] | 0.8444 [0.8384, 0.8501] |
+| fine-tuned, released | 0.8445 [0.8406, 0.8484] | 0.9853 [0.9848, 0.9858] | 0.8448 [0.8389, 0.8506] |
+| fine-tuned, A | 0.8388 [0.8348, 0.8425] | 0.9847 [0.9841, 0.9852] | 0.8439 [0.8378, 0.8496] |
+| fine-tuned, B | 0.8429 [0.8389, 0.8467] | 0.9855 [0.9850, 0.9861] | 0.8453 [0.8393, 0.8509] |
+| fine-tuned, A2 | 0.8368 [0.8327, 0.8407] | 0.9832 [0.9826, 0.9838] | 0.8361 [0.8299, 0.8420] |
+| fine-tuned, B2 | 0.8423 [0.8382, 0.8460] | 0.9846 [0.9841, 0.9852] | 0.8442 [0.8381, 0.8499] |
+
+Every released checkpoint's band overlaps its reproductions. Note that
+fine-tuning slightly *lowers* synthetic onset F1 (≈0.845 → ≈0.840) — expected,
+since stage 2 trades fit to the generic synthetic prior for fit to organic
+statistics.
+
+### Organic test participants, reconstruction R² (mean across the 7 datasets)
+
+| Checkpoint | SNR ∞ | SNR 20 | SNR 10 |
+|---|---|---|---|
+| pretrained, released | 0.9095 [0.888, 0.926] | 0.9018 [0.881, 0.919] | 0.8702 [0.850, 0.887] |
+| pretrained, rerun | 0.8849 [0.848, 0.912] | 0.8981 [0.879, 0.916] | 0.8657 [0.847, 0.887] |
+| pretrained, rerun s1000 | 0.8968 [0.871, 0.920] | 0.8960 [0.871, 0.915] | 0.8616 [0.832, 0.882] |
+| fine-tuned, released | 0.9450 [0.932, 0.956] | 0.9479 [0.937, 0.957] | 0.9194 [0.904, 0.930] |
+| fine-tuned, A | 0.9435 [0.927, 0.954] | 0.9476 [0.936, 0.957] | 0.9102 [0.895, 0.923] |
+| fine-tuned, B | 0.9445 [0.929, 0.956] | 0.9477 [0.937, 0.958] | 0.9184 [0.905, 0.930] |
+| fine-tuned, A2 | 0.9455 [0.932, 0.957] | 0.9468 [0.936, 0.957] | 0.9188 [0.905, 0.929] |
+| fine-tuned, B2 | 0.9453 [0.933, 0.957] | 0.9477 [0.936, 0.957] | 0.9169 [0.902, 0.929] |
+
+Fine-tuning lifts organic R² by ≈0.04–0.05 and the five fine-tuned checkpoints
+are mutually indistinguishable.
+
+### crank, where the stage-1 discrepancy lives
+
+| Checkpoint | SNR ∞ | SNR 20 | SNR 10 |
+|---|---|---|---|
+| pretrained, released | 0.7282 [0.671, 0.785] | 0.6974 [0.633, 0.750] | 0.5960 [0.553, 0.643] |
+| pretrained, rerun | 0.5691 [0.398, 0.682] | 0.6577 [0.597, 0.715] | 0.5578 [0.515, 0.636] |
+| pretrained, rerun s1000 | 0.6720 [0.599, 0.749] | 0.6681 [0.587, 0.724] | 0.5324 [0.433, 0.602] |
+| fine-tuned, released | 0.9172 [0.894, 0.935] | 0.9484 [0.937, 0.959] | 0.9084 [0.894, 0.919] |
+| fine-tuned, A | 0.9118 [0.884, 0.926] | 0.9472 [0.934, 0.957] | 0.8481 [0.824, 0.871] |
+| fine-tuned, B | 0.9167 [0.895, 0.935] | 0.9490 [0.935, 0.960] | 0.9043 [0.896, 0.916] |
+| fine-tuned, A2 | 0.9269 [0.912, 0.944] | 0.9463 [0.936, 0.958] | 0.9082 [0.898, 0.917] |
+| fine-tuned, B2 | 0.9230 [0.913, 0.943] | 0.9491 [0.938, 0.959] | 0.9019 [0.891, 0.911]  |
+
+Two things the bands add. First, the pretrained crank/SNR ∞ interval for the
+rerun is **[0.398, 0.682]** — enormously wide, and it only just fails to overlap
+the released band [0.671, 0.785]. As an absolute score the discrepancy is far
+less clear-cut than the paired point estimate suggested; that is a consequence of
+crank having only five test participants. The paired analysis remains the more
+sensitive test, because it cancels trial difficulty.
+
+Second, fine-tuning does not merely raise crank, it **stabilises** it: the
+pretrained spread across three checkpoints is 0.569–0.728 with bands up to 0.28
+wide, while all five fine-tuned checkpoints sit in 0.911–0.927 with bands around
+0.04 wide.
+
 ## Reproducing this
 
 ```bash
