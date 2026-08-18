@@ -119,11 +119,16 @@ def synthetic_per_trial(model, config, reconstructor, seed):
                     x_clean, y_pred, reconstructed, score_for_each_element=True)
                 sup = calculate_supervised_metrics(y, y_pred, score_for_each_element=True)
             merged = {**rec, **sup}
-            n = len(np.atleast_1d(merged['Reconstruction_R2']))
+            first = merged['Reconstruction_R2']
+            if torch.is_tensor(first):
+                first = first.detach().cpu().numpy()
+            n = len(np.atleast_1d(first))
             for i in range(n):
                 row = {'Noise': str(noise),
                        'Refractory': f'{refractory[0]}-{refractory[1]}'}
                 for key, value in merged.items():
+                    if torch.is_tensor(value):
+                        value = value.detach().cpu().numpy()
                     array = np.atleast_1d(value)
                     if array.size == n:
                         row[key] = float(array[i])
