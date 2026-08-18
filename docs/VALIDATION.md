@@ -371,6 +371,46 @@ see a model that fails badly on a minority of trials. The published intervals us
 count, so crank's five participants are averaged in with whacamole's 176. Splitting per dataset
 is what made the crank discrepancy legible at all.
 
+### Participant as the unit of analysis — and a correction
+
+Every interval above treats the trial as the observation. Repeating the analysis with the
+**participant** as the unit (each contributes one score, the mean over their trials; interval is
+the ordinary t across participants) changes the conclusion about crank.
+
+Per-participant crank means at SNR ∞, pretrained:
+
+| Participant | Released | Reproduction |
+|---|---:|---:|
+| BGN | 0.629 | 0.199 |
+| INZ | 0.669 | 0.548 |
+| IWD | 0.739 | 0.678 |
+| KTN | 0.690 | 0.356 |
+| OPO | 0.574 | −0.767 |
+
+The released checkpoint is uniform across subjects (0.574–0.739); the reproduction is not
+(−0.767 to 0.678). Paired t on those five differences, SNR ∞:
+
+| Dataset | n | mean Δ | 95% CI | p |
+|---|---:|---:|---|---:|
+| **crank** | 5 | **−0.457** | **[−1.098, +0.184]** | **0.119** |
+| whacamole | 128 | −0.006 | [−0.008, −0.003] | <0.001 |
+| steering | 9 | +0.005 | [+0.003, +0.006] | <0.001 |
+| Fitts | 10 | −0.006 | [−0.011, −0.001] | 0.016 |
+| tablet_writing | 38 | +0.010 | [+0.002, +0.018] | 0.017 |
+| object_moving | 5 | −0.015 | [−0.035, +0.005] | 0.099 |
+| pointing | 2 | −0.005 | [−0.089, +0.078] | 0.572 |
+
+**The crank discrepancy — the single largest effect in this whole exercise, and the one this
+document has led with — is not statistically separable from zero once the participant is the
+unit of analysis.** The point estimate is large and the direction is reproducible across two
+seeds, but five participants with that spread cannot support the claim. Conversely, the
+differences that *are* significant are all smaller than 0.01 and practically negligible; they
+reach significance because whacamole has 128 participants.
+
+Effect size and statistical significance point in opposite directions here, and the trial-level
+bootstrap showed neither. For the article, the participant-level analysis is the one whose
+degrees of freedom match the design.
+
 ## Reproducing this
 
 ```bash
