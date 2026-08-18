@@ -54,6 +54,11 @@ def parse_args():
     p.add_argument('--bootstrap', type=int, default=2000)
     p.add_argument('--trials', type=int, default=128, help='organic trials per dataset')
     p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--dump-per-trial', default=None, metavar='DIR',
+                   help='write per-trial values (with sufficient statistics for pooled '
+                        'metrics) so band variants can be recomputed without a GPU')
+    p.add_argument('--skip-bootstrap', action='store_true',
+                   help='only produce per-trial dumps; compute intervals elsewhere')
     p.add_argument('--skip-synthetic', action='store_true')
     p.add_argument('--skip-organic', action='store_true')
     p.add_argument('--out', required=True, help='tidy CSV of scores and intervals')
@@ -128,7 +133,21 @@ def synthetic_per_trial(model, config, reconstructor, seed):
                 rec = calculate_reconstruction_metrics(
                     x_clean, y_pred, reconstructed, score_for_each_element=True)
                 sup = calculate_supervised_metrics(y, y_pred, score_for_each_element=True)
-            merged = {**rec, **sup}
+            # per-trial sufficient statistics, so a resample's POOLED metric can be
+            # reconstructed exactly rather than recomputed from tensors
+            clean = x_clean.detach().reshape(x_clean.shape[0], -1).double()
+            recon_flat = reconstructed.detach().reshape(reconstructed.shape[0], -1).double()
+            err = recon_flat - clean
+            denom = clean.abs() + recon_flat.abs()
+            smape_terms = torch.where(denom > 0, 2 * err.abs() / denom,
+                                      torch.zeros_like(denom))
+            stats = {
+                'n_points': clean.shape[1] * torch.ones(clean.shape[0], device=clean.device),
+                'sum_y': clean.sum(1), 'sum_y2': (clean ** 2).sum(1),
+                'ss_res': (err ** 2).sum(1), 'sum_abs_err': err.abs().sum(1),
+                'sum_abs_y': clean.abs().sum(1), 'sum_smape': smape_terms.sum(1),
+            }
+            merged = {**rec, **sup, **{k: v.cpu().numpy() for k, v in stats.items()}}
             n = len(to_array(merged['Reconstruction_R2']))
             for i in range(n):
                 row = {'Noise': str(noise),
@@ -173,8 +192,13 @@ def main():
 
         if not args.skip_synthetic:
             frame = synthetic_per_trial(model, config, reconstructor, args.seed)
+            if args.dump_per_trial:
+                os.makedirs(args.dump_per_trial, exist_ok=True)
+                frame.to_csv(f'{args.dump_per_trial}/synthetic.{label}.csv', index=False)
+            if args.skip_bootstrap:
+                print(f'  synthetic: {len(frame)} trials dumped', flush=True)
             # pooled over conditions, and per condition
-            groups = [('all', frame)]
+            groups = [] if args.skip_bootstrap else [('all', frame)]
             groups += [(f'snr{n}_refr{r}', g) for (n, r), g
                        in frame.groupby(['Noise', 'Refractory'])]
             for name, group in groups:
@@ -192,7 +216,10 @@ def main():
             frame = organic_per_trial(model, config, reconstructor, args.seed, args.trials)
             print(f'  organic: {len(frame)} trials, '
                   f'{frame["Participant"].nunique()} participants', flush=True)
-            for dataset, group in frame.groupby('Dataset'):
+            if args.dump_per_trial:
+                os.makedirs(args.dump_per_trial, exist_ok=True)
+                frame.to_csv(f'{args.dump_per_trial}/organic.{label}.csv', index=False)
+            for dataset, group in ([] if args.skip_bootstrap else frame.groupby('Dataset')):
                 result = hierarchical_bootstrap_metrics(
                     group, n_simulations=args.bootstrap,
                     sample_participants=True, sample_datasets=False,
