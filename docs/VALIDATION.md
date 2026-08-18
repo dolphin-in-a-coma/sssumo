@@ -333,6 +333,44 @@ pretrained spread across three checkpoints is 0.569–0.728 with bands up to 0.2
 wide, while all five fine-tuned checkpoints sit in 0.911–0.927 with bands around
 0.04 wide.
 
+### How much the band method matters
+
+Correction to an earlier claim in this document's history: the bootstrap machinery was **not**
+unused. `notebooks/Analysis - organic and synth.ipynb` calls
+`hierarchical_bootstrap_metrics(n_simulations=10000, sample_participants=True,
+balance_datasets=True, group_by_column='Noise_Condition')` with the default
+`central_tendency='median'`, annotated *"Currently most appropriate"*. That is where the
+published intervals came from; the earlier grep covered `sssumo/` and `scripts/` but not the
+notebooks.
+
+All variants below are recomputed from the same per-trial dumps
+(`scripts/colab/score_checkpoints.py --dump-per-trial`), so differences are attributable purely
+to method. Pooled metrics are reconstructed exactly from per-trial sufficient statistics
+(n, Σy, Σy², SS_res), verified against direct computation. Full table in
+`docs/score_band_variants.csv`; visual comparison in `docs/band_method_sensitivity.html`.
+
+**Estimand (synthetic).** Averaging per-trial R² versus recomputing R² over the pooled signal
+of the resampled set — the latter being what `bootstrap_estimate=True` does. The pooled estimand
+runs ≈0.005 lower for every checkpoint with bands ≈1.34× wider. The shift is near-constant
+(−0.0046 to −0.0055), so rankings and between-checkpoint differences are unaffected.
+
+**Central tendency (organic).** This one changes a conclusion. Pooled and balanced as the
+notebook does:
+
+| SNR ∞, pooled + balanced | Released | Rerun | Gap |
+|---|---:|---:|---:|
+| median (notebook default) | 0.9477 [0.941, 0.952] | 0.9444 [0.935, 0.951] | +0.0033 |
+| mean | 0.8805 [0.867, 0.892] | 0.8135 [0.729, 0.868] | +0.0669 |
+
+The median is robust to precisely the catastrophic trials that constitute the crank failure, so
+it reports the typical trial faithfully and the tail not at all — a twentyfold difference in the
+apparent gap. Neither statistic is wrong; they answer different questions, and only the mean can
+see a model that fails badly on a minority of trials. The published intervals use the median.
+
+**Grouping (organic).** `balance_datasets=True` upsamples every dataset to the largest row
+count, so crank's five participants are averaged in with whacamole's 176. Splitting per dataset
+is what made the crank discrepancy legible at all.
+
 ## Reproducing this
 
 ```bash
