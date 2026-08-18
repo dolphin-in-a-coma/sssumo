@@ -53,7 +53,10 @@ def parse_args():
     p.add_argument('--config', required=True)
     p.add_argument('--checkpoint', action='append', required=True, metavar='LABEL=FILENAME')
     p.add_argument('--bootstrap', type=int, default=2000)
-    p.add_argument('--trials', type=int, default=128, help='organic trials per dataset')
+    p.add_argument('--trials', type=int, default=128,
+                   help='organic trials per dataset x noise; 0 means no cap. '
+                        'Capping undercounts participants on the large datasets, '
+                        'so use 0 for anything reported')
     p.add_argument('--seed', type=int, default=0)
     p.add_argument('--organic-interval', default='cluster-bootstrap',
                    choices=['cluster-bootstrap', 'participant-t', 'participant-spread', 'both'],
@@ -267,7 +270,8 @@ def main():
                   flush=True)
 
         if not args.skip_organic:
-            frame = organic_per_trial(model, config, reconstructor, args.seed, args.trials)
+            frame = organic_per_trial(model, config, reconstructor, args.seed,
+                                      args.trials or None)
             print(f'  organic: {len(frame)} trials, '
                   f'{frame["Participant"].nunique()} participants', flush=True)
             if args.dump_per_trial:
