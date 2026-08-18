@@ -26,6 +26,7 @@ import matplotlib
 matplotlib.use('Agg')
 
 import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 import torch  # noqa: E402
 
 from sssumo.data import SyntheticDataset  # noqa: E402
@@ -33,11 +34,57 @@ from sssumo.models import TDNNDetector  # noqa: E402
 from sssumo.training import (NOISE_CONDITIONS, REFRACTORY_CONDITIONS,  # noqa: E402
                              default_dataset_paths)
 from sssumo.utils import (Config, calculate_and_log_metrics_synthetic,  # noqa: E402
-                          evaluate_on_organic_data)
+                          evaluate_on_organic_data, hierarchical_bootstrap_metrics)
 
 # lower is better for these
 LOWER_IS_BETTER = {"Onset_Distance", "Amplitude_MAE_Scaled", "Duration_MAE_Scaled",
                    "Reconstruction_MASE", "Reconstruction_SMAPE", "Reconstruction_MAE_Scaled"}
+
+
+def bootstrap_frame(noise2dataset_metrics):
+    """Nested {noise: {dataset: {metric: [per-trial...]}}} -> long DataFrame."""
+    rows = []
+    for noise, per_dataset in noise2dataset_metrics.items():
+        for dataset, metrics in per_dataset.items():
+            if 'Participant' not in metrics:
+                continue
+            for i in range(len(metrics['Participant'])):
+                row = {'Dataset': dataset, 'Noise_Condition': str(noise)}
+                row.update({k: v[i] for k, v in metrics.items()})
+                rows.append(row)
+    return pd.DataFrame(rows)
+
+
+KEYS = ['Dataset', 'Noise_Condition', 'Participant', 'Trial']
+
+
+def paired_delta(reference, other):
+    """Per-trial `other - reference`, matched on trial identity."""
+    merged = reference.merge(other, on=KEYS, suffixes=('_ref', '_new'))
+    delta = merged[KEYS].copy()
+    metrics = [c for c in reference.columns if c not in KEYS]
+    for m in metrics:
+        if f'{m}_ref' in merged and pd.api.types.is_numeric_dtype(merged[f'{m}_ref']):
+            delta[m] = merged[f'{m}_new'] - merged[f'{m}_ref']
+    return delta
+
+
+def report_intervals(delta, label, reference_label, n_simulations):
+    """Bootstrap the paired delta over participants, per dataset."""
+    # sample_participants=True is essential: the default resamples rows within a
+    # dataset, which ignores participant clustering and yields intervals that are
+    # far too narrow. sample_datasets stays False -- the datasets are the
+    # population of interest, not a sample from one.
+    results = hierarchical_bootstrap_metrics(
+        delta, n_simulations=n_simulations,
+        sample_participants=True, sample_datasets=False,
+        balance_datasets=False, balance_participants=False,
+        group_by_column='Dataset', datasets_to_exclude=['synthetic'],
+        central_tendency='mean')
+    print(f"\n--- paired delta: {label} - {reference_label} "
+          f"({n_simulations} resamples, participants resampled) ---", flush=True)
+    print(results.to_string(index=False), flush=True)
+    return results
 
 
 def parse_args():
@@ -50,6 +97,11 @@ def parse_args():
     p.add_argument('--trials', type=int, default=128,
                    help='organic trials per dataset; keep above ~32 (see README)')
     p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--bootstrap', type=int, default=0, metavar='N',
+                   help='bootstrap the PAIRED per-trial difference against the first '
+                        'checkpoint over N resamples, resampling participants. 0 disables. '
+                        'Pairing is exact because every checkpoint sees identically seeded '
+                        'trials, which removes trial-level variance from the interval.')
     p.add_argument('--skip-synthetic', action='store_true')
     p.add_argument('--skip-organic', action='store_true')
     p.add_argument('--out', default=None, help='write raw metrics as JSON')
@@ -80,7 +132,7 @@ def reseed(seed):
 def main():
     args = parse_args()
     candidates = dict(spec.split('=', 1) for spec in args.checkpoint)
-    results = {}
+    results, per_trial = {}, {}
 
     for label, filename in candidates.items():
         print(f"\n{'='*70}\n{label}\n{'='*70}", flush=True)
@@ -116,9 +168,21 @@ def main():
                 model=model, dataset2path=default_dataset_paths(config),
                 noise_conditions=NOISE_CONDITIONS, config=config,
                 reconstructor=reconstructor, purpose='test',
-                use_only_n_datapoints=args.trials, plot=False)
-            res['organic'] = {str(n): {d: dict(m) for d, m in dm.items()}
-                              for n, dm in organic.items()}
+                use_only_n_datapoints=args.trials,
+                bootstrap_estimate=bool(args.bootstrap), plot=False)
+            if args.bootstrap:
+                # per-trial values; point estimates are the means of the same data,
+                # so the intervals bracket the numbers being reported
+                frame = bootstrap_frame(organic)
+                per_trial[label] = frame
+                metric_cols = [c for c in frame.columns if c not in KEYS]
+                res['organic'] = {
+                    noise: {d: {m: float(g[m].mean()) for m in metric_cols}
+                            for d, g in frame[frame['Noise_Condition'] == noise].groupby('Dataset')}
+                    for noise in frame['Noise_Condition'].unique()}
+            else:
+                res['organic'] = {str(n): {d: dict(m) for d, m in dm.items()}
+                                  for n, dm in organic.items()}
 
         results[label] = res
 
@@ -166,6 +230,14 @@ def main():
                     if all(isinstance(v, (int, float)) for v in vals):
                         cells.append((f'snr{noise} / {dataset} / {metric}', vals))
     report('ORGANIC TEST PARTICIPANTS', cells)
+
+    if args.bootstrap and len(per_trial) > 1:
+        reference = labels[0]
+        print(f"\n\n{'='*90}\nPAIRED BOOTSTRAP vs {reference}\n{'='*90}", flush=True)
+        for label in labels[1:]:
+            delta = paired_delta(per_trial[reference], per_trial[label])
+            print(f"\nmatched trials: {len(delta)}", flush=True)
+            report_intervals(delta, label, reference, args.bootstrap)
 
     print('\nCOMPARE OK', flush=True)
 

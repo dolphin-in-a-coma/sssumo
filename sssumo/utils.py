@@ -550,10 +550,20 @@ def calculate_and_log_metrics_organic(organic_dataset, model, config, reconstruc
                 else:
                     metric_dict[key] += value / len(datapoints)
             
-            if hasattr(organic_dataset, 'trial2participant') and for_bootstrap:
-                metric_dict['Participant'].append(organic_dataset.trial2participant[organic_dataset.trials[i]])
-            elif for_bootstrap:
-                metric_dict['Participant'].append(0)
+            if for_bootstrap:
+                if hasattr(organic_dataset, 'trial2participant'):
+                    trial = organic_dataset.trials[i]
+                    metric_dict['Participant'].append(organic_dataset.trial2participant[trial])
+                    metric_dict['Trial'].append(trial)
+                else:
+                    # Synthetic data has no participant structure. Anything else
+                    # arriving here would collapse every trial into one cluster and
+                    # silently make participant-level intervals meaningless.
+                    assert dataset_name == 'synthetic', (
+                        f'{dataset_name} has no trial2participant; participant-level '
+                        'bootstrap would treat all its trials as a single cluster')
+                    metric_dict['Participant'].append(0)
+                    metric_dict['Trial'].append(i)
 
 
     if wandb.run is not None:
@@ -990,7 +1000,7 @@ def hierarchical_bootstrap_metrics(metrics_df,
     filtered_df = metrics_df[metrics_df['Dataset'].isin(selected_datasets)].copy()
     
     # Identify numeric metric columns (excluding Participant, Dataset, etc.)
-    non_metric_cols = ['Participant', 'Dataset', 'Noise_Condition']
+    non_metric_cols = ['Participant', 'Dataset', 'Noise_Condition', 'Trial']
     metric_columns = [col for col in filtered_df.columns if col not in non_metric_cols]
     
     # Initialize storage for bootstrap results
