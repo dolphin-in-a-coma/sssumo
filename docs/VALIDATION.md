@@ -228,6 +228,43 @@ against the released weights: A has 2 of 24, B has 0, A2 has 0, B2 has 1 — and
 crank appears only once, at the noisiest setting. The pretraining crank defect is
 gone from every fine-tuned model.
 
+### Confidence intervals on the reproduction gap
+
+Point estimates alone cannot say whether a gap matters. `compare_checkpoints.py
+--bootstrap N` bootstraps the **paired per-trial difference** against the released
+checkpoint, resampling participants (2000 resamples, 95% intervals, one per
+dataset × noise cell). Pairing is exact — every checkpoint sees identically seeded
+trials — which removes trial-level variance from the interval.
+
+Across 84 cells (21 dataset × noise, 4 reproductions), the delta in reconstruction
+R² exceeds 0.01 in **two**:
+
+| Checkpoint | Cell | Δ R² | 95% CI |
+|---|---|---:|---|
+| A | crank, SNR 10 | −0.0416 | [−0.062, −0.026] |
+| B2 | crank, SNR ∞ | +0.0104 | [+0.002, +0.025] |
+
+Everything else is below 0.005. Both outliers are crank, the dataset that also
+carried the stage-1 discrepancy.
+
+**Statistical significance is not the useful criterion here.** 16 of 84 intervals
+exclude zero, but 14 of those have |Δ| < 0.005 — differences of 0.001 R² on values
+near 0.93. Whacamole has 176 test participants, so its intervals are tight enough
+to resolve a 0.0008 difference as "significant". Magnitude is what matters, and by
+magnitude the reproductions are equivalent to the released weights everywhere
+except crank.
+
+**Caveat on participant counts.** The test split sizes are very uneven:
+
+| Dataset | whacamole | tablet_writing | Fitts | steering | crank | object_moving | pointing |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| test participants | 176 | 41 | 10 | 9 | 5 | 5 | **2** |
+
+Participant-resampled intervals for pointing (n = 2), crank (n = 5) and
+object_moving (n = 5) rest on very few clusters and should be read as indicative
+only. That is a direct caveat on the crank finding, which is the one result this
+whole exercise turned on: it is based on five test participants.
+
 ## Reproducing this
 
 ```bash
