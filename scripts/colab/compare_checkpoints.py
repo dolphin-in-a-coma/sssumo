@@ -69,22 +69,45 @@ def paired_delta(reference, other):
     return delta
 
 
-def report_intervals(delta, label, reference_label, n_simulations):
-    """Bootstrap the paired delta over participants, per dataset."""
-    # sample_participants=True is essential: the default resamples rows within a
-    # dataset, which ignores participant clustering and yields intervals that are
-    # far too narrow. sample_datasets stays False -- the datasets are the
-    # population of interest, not a sample from one.
-    results = hierarchical_bootstrap_metrics(
-        delta, n_simulations=n_simulations,
-        sample_participants=True, sample_datasets=False,
-        balance_datasets=False, balance_participants=False,
-        group_by_column='Dataset', datasets_to_exclude=['synthetic'],
-        central_tendency='mean')
+def report_intervals(delta, label, reference_label, n_simulations, metrics=None):
+    """Bootstrap the paired delta over participants, per dataset and noise level.
+
+    hierarchical_bootstrap_metrics only implements grouping for 'Noise_Condition';
+    any other group_by_column silently pools everything. So datasets are split
+    here and noise grouping is delegated, giving one interval per dataset x noise.
+
+    sample_participants=True is essential: the default resamples rows within a
+    dataset, ignoring participant clustering, which yields intervals that are far
+    too narrow. sample_datasets stays False -- the datasets are the population of
+    interest, not a sample from one.
+    """
     print(f"\n--- paired delta: {label} - {reference_label} "
           f"({n_simulations} resamples, participants resampled) ---", flush=True)
-    print(results.to_string(index=False), flush=True)
-    return results
+    frames = []
+    for dataset in sorted(d for d in delta['Dataset'].unique() if d != 'synthetic'):
+        subset = delta[delta['Dataset'] == dataset]
+        n_participants = subset['Participant'].nunique()
+        result = hierarchical_bootstrap_metrics(
+            subset, n_simulations=n_simulations,
+            sample_participants=True, sample_datasets=False,
+            balance_datasets=False, balance_participants=False,
+            group_by_column='Noise_Condition', datasets_to_exclude=[],
+            datasets_to_include=[dataset], central_tendency='mean')
+        result = result.copy()
+        result['Dataset'] = dataset
+        result['N_Participants'] = n_participants
+        if metrics is not None:
+            result = result[result['Metric'].isin(metrics)]
+        frames.append(result)
+    combined = pd.concat(frames, ignore_index=True)
+    combined['Excludes_0'] = ~((combined['Lower_CI'] <= 0) & (combined['Upper_CI'] >= 0))
+    cols = ['Dataset', 'Noise_Condition', 'Metric', 'Mean', 'Lower_CI', 'Upper_CI',
+            'N_Participants', 'Excludes_0']
+    cols = [c for c in cols if c in combined.columns]
+    print(combined[cols].to_string(index=False), flush=True)
+    n_sig = int(combined['Excludes_0'].sum())
+    print(f"  intervals excluding zero: {n_sig} of {len(combined)}", flush=True)
+    return combined
 
 
 def parse_args():
@@ -102,6 +125,9 @@ def parse_args():
                         'checkpoint over N resamples, resampling participants. 0 disables. '
                         'Pairing is exact because every checkpoint sees identically seeded '
                         'trials, which removes trial-level variance from the interval.')
+    p.add_argument('--bootstrap-metrics', nargs='*',
+                   default=['Reconstruction_R2', 'Number_of_submovements_per_second'],
+                   help='which metrics to report intervals for; empty means all')
     p.add_argument('--skip-synthetic', action='store_true')
     p.add_argument('--skip-organic', action='store_true')
     p.add_argument('--out', default=None, help='write raw metrics as JSON')
@@ -190,6 +216,10 @@ def main():
         with open(args.out, 'w') as f:
             json.dump(results, f, indent=1, default=str)
         print(f'\nwrote {args.out}', flush=True)
+        for label, frame in per_trial.items():
+            path = f'{args.out}.per_trial.{label}.csv'
+            frame.to_csv(path, index=False)
+            print(f'wrote {path}', flush=True)
 
     labels = list(candidates)
     ref = labels[0]
@@ -237,7 +267,10 @@ def main():
         for label in labels[1:]:
             delta = paired_delta(per_trial[reference], per_trial[label])
             print(f"\nmatched trials: {len(delta)}", flush=True)
-            report_intervals(delta, label, reference, args.bootstrap)
+            summary = report_intervals(delta, label, reference, args.bootstrap,
+                                       metrics=args.bootstrap_metrics)
+            if args.out:
+                summary.to_csv(f'{args.out}.bootstrap.{label}.csv', index=False)
 
     print('\nCOMPARE OK', flush=True)
 
