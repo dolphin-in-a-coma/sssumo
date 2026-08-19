@@ -52,6 +52,9 @@ with open(list_path, "w") as f:
     f.write(LIST_SCRIPT)
 
 
+TRANSIENT = object()   # distinct from None ("VM gone")
+
+
 class _Failed:
     """Stand-in for a call that never returned; keeps the poll loop alive."""
     returncode = 1
@@ -87,8 +90,12 @@ def remote_checkpoints():
         if attempt == 1:
             print("  list failed; re-minting", flush=True)
             if not remint():
-                return None          # VM really gone
-    return None
+                return None          # re-mint says the VM is gone
+    # Re-mint succeeded but the listing still failed: the VM is alive and the
+    # kernel is merely slow or busy. Treating this as "VM gone" is how the puller
+    # used to abandon a live run.
+    print("  listing still failing after a good re-mint; retrying next cycle", flush=True)
+    return TRANSIENT
 
 
 pulled = {f for f in os.listdir(LOCAL) if f.startswith(PREFIX)}
@@ -97,8 +104,11 @@ print(f"already local: {sorted(pulled)}", flush=True)
 while time.time() < DEADLINE:
     remote = remote_checkpoints()
     if remote is None:
-        print("VM unreachable and not in the live assignment list -- stopping", flush=True)
+        print("VM is not in the live assignment list -- stopping", flush=True)
         break
+    if remote is TRANSIENT:
+        time.sleep(INTERVAL)
+        continue
     new = [f for f in remote if f not in pulled]
     for name in sorted(new):
         r = sh(f"colab --auth=oauth2 download -s {SESSION} "

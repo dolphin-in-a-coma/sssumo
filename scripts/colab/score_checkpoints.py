@@ -326,8 +326,9 @@ def main():
     scores.to_csv(args.out, index=False)
     print(f'\nwrote {args.out} ({len(scores)} rows)', flush=True)
 
-    headline = scores[(scores.group == 'all') |
-                      (scores.group.str.startswith('_pooled'))]
+    # --skip-bootstrap produces no records at all, so guard before touching columns
+    headline = (scores[scores.group == 'all'] if 'group' in scores.columns
+                else pd.DataFrame())
     if not headline.empty:
         print('\n=== synthetic, pooled over all 9 conditions ===', flush=True)
         for metric in REPORT:
