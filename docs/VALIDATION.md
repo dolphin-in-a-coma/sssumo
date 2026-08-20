@@ -411,6 +411,39 @@ Effect size and statistical significance point in opposite directions here, and 
 bootstrap showed neither. For the article, the participant-level analysis is the one whose
 degrees of freedom match the design.
 
+### Uncapped re-analysis
+
+All organic numbers above used at most 128 trials per dataset × noise, which
+undercounted participants on the two large datasets. Re-run without the cap:
+**36 735 trials over 251 participants** per checkpoint, against 2 688 / 243 —
+the cap was discarding 93% of the data. Every dataset now matches its true
+test-split size (whacamole 181, tablet_writing 44, Fitts 10, steering 9, crank 5,
+object_moving 5, pointing 2) and the participant set is identical across noise
+levels. Tables in `docs/organic_uncapped_tables.csv` and
+`docs/organic_uncapped_paired.csv`.
+
+The extra trials tighten each per-participant mean, so more differences reach
+significance — 55 of 126 paired cells now exclude zero, against a handful before.
+Almost all are trivially small: the significant list is dominated by |Δ| < 0.01.
+
+**The crank picture becomes sharper and splits by noise level:**
+
+| Checkpoint | crank SNR ∞ | crank SNR 10 |
+|---|---|---|
+| pretrained rerun | −0.390 [−0.854, +0.075], p = 0.081 | −0.048 [−0.066, −0.031], **p = 0.002** |
+| pretrained rerun s1000 | −0.056 [−0.129, +0.017], p = 0.100 | −0.098 [−0.125, −0.072], **p = 0.001** |
+
+At **SNR ∞** the effect is enormous in point estimate and still not separable from
+zero — five participants with one collapsing and one barely affected cannot
+support it, and the full trial set does not change that. At **SNR 10** the deficit
+is smaller but **significant and reproducible across both pretraining seeds**,
+which is the firmer claim: the reproduced pretrained checkpoints are genuinely,
+modestly worse on noisy crank.
+
+Among fine-tuned checkpoints only `ft_A` shows a crank deficit that survives
+(−0.060 at SNR 10, p = 0.0001); the other three are within noise, and two are
+slightly *better* than the released checkpoint at SNR ∞.
+
 ## Reproducing this
 
 ```bash
