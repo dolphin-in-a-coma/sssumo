@@ -342,7 +342,12 @@ def calculate_reconstruction_metrics(x_clean, y_pred, reconstructed_x, bootstrap
                 reconstruction_r2.append(r2_score(x_clean_np, reconstructed_x_np))
                 reconstruction_mase.append(mase(x_clean_np, reconstructed_x_np))
                 reconstruction_smape.append(smape(x_clean_np, reconstructed_x_np))
-                number_of_submovements_per_sample.append((STEBinarizer.apply(mask_pred, False, peaks_only).sum() / mask_pred.numel()).item())
+                # mask_pred[i:i+1] keeps the 2D shape STEBinarizer needs. Using the
+                # whole batch here made every 'per-trial' value the batch mean.
+                trial_mask = mask_pred[i:i + 1]
+                number_of_submovements_per_sample.append(
+                    (STEBinarizer.apply(trial_mask, False, peaks_only).sum()
+                     / trial_mask.numel()).item())
 
             reconstruction_r2 = np.array(reconstruction_r2)
             reconstruction_mase = np.array(reconstruction_mase)
@@ -550,10 +555,20 @@ def calculate_and_log_metrics_organic(organic_dataset, model, config, reconstruc
                 else:
                     metric_dict[key] += value / len(datapoints)
             
-            if hasattr(organic_dataset, 'trial2participant') and for_bootstrap:
-                metric_dict['Participant'].append(organic_dataset.trial2participant[organic_dataset.trials[i]])
-            elif for_bootstrap:
-                metric_dict['Participant'].append(0)
+            if for_bootstrap:
+                if hasattr(organic_dataset, 'trial2participant'):
+                    trial = organic_dataset.trials[i]
+                    metric_dict['Participant'].append(organic_dataset.trial2participant[trial])
+                    metric_dict['Trial'].append(trial)
+                else:
+                    # Synthetic data has no participant structure. Anything else
+                    # arriving here would collapse every trial into one cluster and
+                    # silently make participant-level intervals meaningless.
+                    assert dataset_name == 'synthetic', (
+                        f'{dataset_name} has no trial2participant; participant-level '
+                        'bootstrap would treat all its trials as a single cluster')
+                    metric_dict['Participant'].append(0)
+                    metric_dict['Trial'].append(i)
 
 
     if wandb.run is not None:
@@ -990,7 +1005,7 @@ def hierarchical_bootstrap_metrics(metrics_df,
     filtered_df = metrics_df[metrics_df['Dataset'].isin(selected_datasets)].copy()
     
     # Identify numeric metric columns (excluding Participant, Dataset, etc.)
-    non_metric_cols = ['Participant', 'Dataset', 'Noise_Condition']
+    non_metric_cols = ['Participant', 'Dataset', 'Noise_Condition', 'Trial']
     metric_columns = [col for col in filtered_df.columns if col not in non_metric_cols]
     
     # Initialize storage for bootstrap results

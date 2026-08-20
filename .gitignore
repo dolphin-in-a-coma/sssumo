@@ -1,1 +1,22 @@
 data/*
+
+# Secrets -- never commit. The wandb key is read from ~/.netrc at launch time,
+# written to a temp file outside the repo, uploaded, and shredded.
+*.key
+.wandb_key
+*wandb_key*
+.netrc
+
+# Machine-specific run configuration (Drive paths, experiment names, entities)
+*.local.json
+
+# Run outputs
+weights/
+logs/
+wandb/
+*pulled_stats*.csv
+*.state.json
+*.log
+
+# Executed notebooks (can be tens of MB of embedded figures)
+*_output.ipynb

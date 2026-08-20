@@ -1,0 +1,256 @@
+<title>Band Method Sensitivity</title>
+<style>
+:root{
+  --ground:#F5F7F7; --surface:#FFFFFF; --surface-2:#EEF2F1;
+  --ink:#16201F; --ink-2:#485957; --ink-3:#7C8D8A;
+  --rule:#DBE3E1; --rule-soft:#E9EEED;
+  --accent:#0E6E6B; --accent-soft:#C9E0DD; --accent-line:#0E6E6B;
+  --reference:#8A5E17; --reference-soft:#EADBBC;
+  --flag:#9C3B38;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1514; --surface:#151E1D; --surface-2:#1B2624;
+    --ink:#E7EEEC; --ink-2:#A8B9B6; --ink-3:#7B8D8A;
+    --rule:#243230; --rule-soft:#1D2827;
+    --accent:#57B7B1; --accent-soft:#1F403E; --accent-line:#57B7B1;
+    --reference:#C9A05A; --reference-soft:#3A2F17;
+    --flag:#D3746F;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1514; --surface:#151E1D; --surface-2:#1B2624;
+  --ink:#E7EEEC; --ink-2:#A8B9B6; --ink-3:#7B8D8A;
+  --rule:#243230; --rule-soft:#1D2827;
+  --accent:#57B7B1; --accent-soft:#1F403E; --accent-line:#57B7B1;
+  --reference:#C9A05A; --reference-soft:#3A2F17;
+  --flag:#D3746F;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:56px 28px 96px;display:flex;flex-direction:column;gap:40px}
+h1{font-family:var(--serif);font-weight:600;font-size:clamp(30px,4.6vw,44px);
+  line-height:1.12;margin:0;letter-spacing:-.012em;text-wrap:balance}
+h2{font-family:var(--serif);font-weight:600;font-size:26px;margin:0;letter-spacing:-.008em}
+h3{font-size:14px;font-weight:650;margin:0;letter-spacing:.02em}
+p{margin:0;max-width:66ch;color:var(--ink-2)}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--accent)}
+header{display:flex;flex-direction:column;gap:14px;border-bottom:1px solid var(--rule);padding-bottom:32px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.chip{font-family:var(--mono);font-size:11.5px;padding:5px 10px;border:1px solid var(--rule);
+  border-radius:2px;background:var(--surface);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.note{background:var(--surface);border:1px solid var(--rule);border-left:2px solid var(--accent);
+  padding:18px 22px;display:flex;flex-direction:column;gap:8px}
+.note strong{color:var(--ink);font-weight:650}
+section{display:flex;flex-direction:column;gap:22px}
+.section-head{display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--rule);padding-bottom:14px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+label{font-size:12px;color:var(--ink-3);letter-spacing:.02em}
+select{font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid var(--rule);
+  border-radius:2px;background:var(--surface);color:var(--ink)}
+select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cards{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(430px,1fr))}
+.card{background:var(--surface);border:1px solid var(--rule);padding:18px 20px 20px;
+  display:flex;flex-direction:column;gap:12px;overflow-x:auto}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.card-sub{font-family:var(--mono);font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.blocklabel{font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);padding-top:6px}
+table{border-collapse:collapse;width:100%;min-width:400px}
+th{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);text-align:right;padding:0 0 6px;border-bottom:1px solid var(--rule)}
+th:first-child{text-align:left}
+td{padding:5px 0;border-bottom:1px solid var(--rule-soft);font-size:13px;vertical-align:middle}
+td.name{color:var(--ink);white-space:nowrap;padding-right:14px}
+td.num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;
+  white-space:nowrap;padding-left:12px}
+td.ci{font-family:var(--mono);text-align:right;font-size:11.5px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:10px}
+tr.ref td.name{color:var(--reference);font-weight:650}
+tr.ref td.num{color:var(--reference)}
+tr.clear td.num{color:var(--flag)}
+.band{width:100%;min-width:120px;padding-left:16px}
+.track{position:relative;height:16px}
+.track i{position:absolute;top:6px;height:4px;background:var(--accent-soft);border-radius:2px}
+.track b{position:absolute;top:2px;width:2px;height:12px;background:var(--accent)}
+tr.ref .track i{background:var(--reference-soft)}
+tr.ref .track b{background:var(--reference)}
+tr.clear .track b{background:var(--flag)}
+.guide{position:absolute;top:0;width:1px;height:16px;background:var(--reference);opacity:.5}
+.scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+  color:var(--ink-3);padding-left:16px;font-variant-numeric:tabular-nums}
+footer{border-top:1px solid var(--rule);padding-top:22px;color:var(--ink-3);font-size:13px}
+code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;border-radius:2px}
+@media (max-width:640px){.cards{grid-template-columns:1fr}.wrap{padding:36px 16px 64px}}
+</style>
+
+<style>
+:root{ --a:#2F4A8C; --a-soft:#C6D2EC; --b:#0E6E6B; --b-soft:#C9E0DD; }
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --a:#8FA6E4; --a-soft:#26355E; --b:#57B7B1; --b-soft:#1F403E; }}
+:root[data-theme="dark"]{ --a:#8FA6E4; --a-soft:#26355E; --b:#57B7B1; --b-soft:#1F403E; }
+.legend{display:flex;gap:18px;font-size:11.5px;color:var(--ink-2)}
+.legend span{display:flex;align-items:center;gap:6px}
+.sw{width:14px;height:4px;border-radius:2px;display:inline-block}
+.sw.a{background:var(--a)} .sw.b{background:var(--b)}
+td.num.a{color:var(--a)} td.num.b{color:var(--b)}
+td.delta{font-family:var(--mono);text-align:right;font-size:11.5px;color:var(--ink-3);
+  padding-left:12px;font-variant-numeric:tabular-nums}
+.track2{position:relative;height:22px}
+.track2 i{position:absolute;height:4px;border-radius:2px}
+.track2 i.a{top:4px;background:var(--a-soft)} .track2 i.b{top:14px;background:var(--b-soft)}
+.track2 b{position:absolute;width:2px;height:8px}
+.track2 b.a{top:2px;background:var(--a)} .track2 b.b{top:12px;background:var(--b)}
+.finding{background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--a);
+  padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+.pairnum{display:flex;gap:32px;flex-wrap:wrap;font-family:var(--mono);
+  font-variant-numeric:tabular-nums;font-size:13px}
+.pairnum div{display:flex;flex-direction:column;gap:2px}
+.pairnum span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  font-family:var(--sans);color:var(--ink-3)}
+.big{font-size:20px}
+</style><div class="wrap">
+<header>
+  <div class="eyebrow">SSSUMO reproduction · methods</div>
+  <h1>Band Method Sensitivity</h1>
+  <p>The same per-trial data, scored four defensible ways. Confidence bands are not a
+  property of the data alone — they depend on which statistic you summarise with, whether
+  datasets are pooled, and whether a metric is averaged per trial or recomputed over the
+  pooled signal. This page shows how much each choice moves the answer, and where it changes
+  a conclusion rather than just a number.</p>
+  <div class="meta">
+    <span class="chip">8 checkpoints</span><span class="chip">2000 resamples</span>
+    <span class="chip">synthetic · 4608 trials</span>
+    <span class="chip">organic · 243 participants</span>
+    <span class="chip">reconstruction R²</span>
+  </div>
+</header>
+
+<div class="finding">
+  <strong>One choice decides whether the crank failure is visible at all.</strong>
+  <p>Pooled across datasets with the analysis notebook's settings, the reproduced pretrained
+  checkpoint is indistinguishable from the released one when summarised by the
+  <em>median</em> trial — and clearly worse when summarised by the <em>mean</em>. The median is
+  robust to exactly the catastrophic trials that constitute the failure, so it reports the
+  typical trial faithfully and the tail not at all.</p>
+  <div class="pairnum">
+    <div><span>median · released vs rerun</span>
+      <b class="big">0.9477 vs 0.9444</b><em>gap +0.0033</em></div>
+    <div><span>mean · released vs rerun</span>
+      <b class="big">0.8805 vs 0.8135</b><em>gap +0.0669</em></div>
+  </div>
+  <p>Neither is wrong. They answer different questions, and only one of them can see a model
+  that fails badly on a minority of trials.</p>
+</div>
+
+<section>
+  <div class="section-head"><h2>Estimand · synthetic</h2>
+  <p>Averaging per-trial R² against recomputing R² over the pooled signal of a resampled set.
+  The notebook's <code>bootstrap_estimate=True</code> path does the latter.</p></div>
+  <div class="cards"><div class="card"><div class="card-head"><h3>Synthetic · reconstruction R²</h3><span class="card-sub">4608 trials, pooled over all nine conditions</span></div>
+<div class="legend"><span><i class="sw a"></i>per-trial mean</span><span><i class="sw b"></i>pooled recompute</span></div>
+<table><tbody>
+<tr><td class="name">pretrained · released</td><td class="num a">0.9839</td><td class="num b">0.9786</td><td class="delta">-0.0053</td><td class="band"><div class="track2"><i class="a" style="left:64.376%;width:8.919%"></i><b class="a" style="left:calc(68.961% - 1px)"></b><i class="b" style="left:16.979%;width:11.821%"></i><b class="b" style="left:calc(22.897% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun</td><td class="num a">0.9862</td><td class="num b">0.9816</td><td class="delta">-0.0046</td><td class="band"><div class="track2"><i class="a" style="left:84.175%;width:8.197%"></i><b class="a" style="left:calc(88.403% - 1px)"></b><i class="b" style="left:43.007%;width:10.390%"></i><b class="b" style="left:calc(48.379% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun s1000</td><td class="num a">0.9848</td><td class="num b">0.9794</td><td class="delta">-0.0054</td><td class="band"><div class="track2"><i class="a" style="left:71.734%;width:9.127%"></i><b class="a" style="left:calc(76.366% - 1px)"></b><i class="b" style="left:23.677%;width:11.574%"></i><b class="b" style="left:calc(29.421% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · released</td><td class="num a">0.9853</td><td class="num b">0.9801</td><td class="delta">-0.0052</td><td class="band"><div class="track2"><i class="a" style="left:76.660%;width:8.911%"></i><b class="a" style="left:calc(81.084% - 1px)"></b><i class="b" style="left:29.736%;width:12.289%"></i><b class="b" style="left:calc(35.864% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A</td><td class="num a">0.9846</td><td class="num b">0.9792</td><td class="delta">-0.0055</td><td class="band"><div class="track2"><i class="a" style="left:70.369%;width:9.786%"></i><b class="a" style="left:calc(75.293% - 1px)"></b><i class="b" style="left:20.567%;width:13.578%"></i><b class="b" style="left:calc(27.619% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B</td><td class="num a">0.9855</td><td class="num b">0.9807</td><td class="delta">-0.0048</td><td class="band"><div class="track2"><i class="a" style="left:78.583%;width:8.917%"></i><b class="a" style="left:calc(83.051% - 1px)"></b><i class="b" style="left:35.190%;width:12.352%"></i><b class="b" style="left:calc(41.316% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A2</td><td class="num a">0.9832</td><td class="num b">0.9778</td><td class="delta">-0.0055</td><td class="band"><div class="track2"><i class="a" style="left:57.408%;width:10.704%"></i><b class="a" style="left:calc(62.792% - 1px)"></b><i class="b" style="left:7.627%;width:14.802%"></i><b class="b" style="left:calc(15.202% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B2</td><td class="num a">0.9846</td><td class="num b">0.9796</td><td class="delta">-0.0050</td><td class="band"><div class="track2"><i class="a" style="left:70.063%;width:9.778%"></i><b class="a" style="left:calc(74.947% - 1px)"></b><i class="b" style="left:24.692%;width:12.962%"></i><b class="b" style="left:calc(31.205% - 1px)"></b></div></td></tr>
+</tbody></table><div class="scale"><span>0.976</span><span>0.987</span></div></div></div></div>
+  <p>The pooled estimand runs about <strong>0.005 lower</strong> for every checkpoint, with bands
+  roughly <strong>1.34×</strong> wider. Because the shift is near-constant (−0.0046 to −0.0055),
+  rankings and between-checkpoint differences survive intact — this choice moves the level, not
+  the comparison.</p>
+</section>
+
+<section>
+  <div class="section-head"><h2>Central tendency · organic</h2>
+  <p>Datasets pooled and balanced, as the notebook does; median against mean.</p></div>
+  <div class="cards"><div class="card"><div class="card-head"><h3>Organic · SNR ∞</h3><span class="card-sub">7 datasets pooled, balance_datasets=True, 243 participants</span></div>
+<div class="legend"><span><i class="sw a"></i>median (paper)</span><span><i class="sw b"></i>mean</span></div>
+<table><tbody>
+<tr><td class="name">pretrained · released</td><td class="num a">0.9477</td><td class="num b">0.8805</td><td class="delta">-0.0673</td><td class="band"><div class="track2"><i class="a" style="left:83.941%;width:3.867%"></i><b class="a" style="left:calc(86.221% - 1px)"></b><i class="b" style="left:57.305%;width:8.970%"></i><b class="b" style="left:calc(62.019% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun</td><td class="num a">0.9444</td><td class="num b">0.8135</td><td class="delta">-0.1309</td><td class="band"><div class="track2"><i class="a" style="left:81.771%;width:5.708%"></i><b class="a" style="left:calc(85.026% - 1px)"></b><i class="b" style="left:7.627%;width:49.954%"></i><b class="b" style="left:calc(37.943% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun s1000</td><td class="num a">0.9477</td><td class="num b">0.8684</td><td class="delta">-0.0793</td><td class="band"><div class="track2"><i class="a" style="left:83.664%;width:4.484%"></i><b class="a" style="left:calc(86.206% - 1px)"></b><i class="b" style="left:49.363%;width:14.920%"></i><b class="b" style="left:calc(57.670% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · released</td><td class="num a">0.9615</td><td class="num b">0.9239</td><td class="delta">-0.0376</td><td class="band"><div class="track2"><i class="a" style="left:89.734%;width:2.509%"></i><b class="a" style="left:calc(91.173% - 1px)"></b><i class="b" style="left:74.612%;width:5.813%"></i><b class="b" style="left:calc(77.654% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A</td><td class="num a">0.9608</td><td class="num b">0.9233</td><td class="delta">-0.0375</td><td class="band"><div class="track2"><i class="a" style="left:89.266%;width:2.933%"></i><b class="a" style="left:calc(90.908% - 1px)"></b><i class="b" style="left:74.265%;width:5.921%"></i><b class="b" style="left:calc(77.416% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B</td><td class="num a">0.9613</td><td class="num b">0.9235</td><td class="delta">-0.0378</td><td class="band"><div class="track2"><i class="a" style="left:89.254%;width:3.119%"></i><b class="a" style="left:calc(91.085% - 1px)"></b><i class="b" style="left:74.122%;width:6.283%"></i><b class="b" style="left:calc(77.490% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A2</td><td class="num a">0.9620</td><td class="num b">0.9248</td><td class="delta">-0.0372</td><td class="band"><div class="track2"><i class="a" style="left:89.948%;width:2.280%"></i><b class="a" style="left:calc(91.347% - 1px)"></b><i class="b" style="left:74.913%;width:5.751%"></i><b class="b" style="left:calc(77.983% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B2</td><td class="num a">0.9606</td><td class="num b">0.9231</td><td class="delta">-0.0374</td><td class="band"><div class="track2"><i class="a" style="left:89.106%;width:2.887%"></i><b class="a" style="left:calc(90.830% - 1px)"></b><i class="b" style="left:73.764%;width:6.620%"></i><b class="b" style="left:calc(77.369% - 1px)"></b></div></td></tr>
+</tbody></table><div class="scale"><span>0.708</span><span>0.986</span></div></div>
+<div class="card"><div class="card-head"><h3>Organic · SNR 20</h3><span class="card-sub">7 datasets pooled, balance_datasets=True, 243 participants</span></div>
+<div class="legend"><span><i class="sw a"></i>median (paper)</span><span><i class="sw b"></i>mean</span></div>
+<table><tbody>
+<tr><td class="name">pretrained · released</td><td class="num a">0.9451</td><td class="num b">0.8813</td><td class="delta">-0.0638</td><td class="band"><div class="track2"><i class="a" style="left:69.631%;width:9.726%"></i><b class="a" style="left:calc(74.604% - 1px)"></b><i class="b" style="left:11.905%;width:17.110%"></i><b class="b" style="left:calc(21.046% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun</td><td class="num a">0.9459</td><td class="num b">0.8810</td><td class="delta">-0.0649</td><td class="band"><div class="track2"><i class="a" style="left:68.916%;width:11.765%"></i><b class="a" style="left:calc(75.234% - 1px)"></b><i class="b" style="left:13.370%;width:14.503%"></i><b class="b" style="left:calc(20.801% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun s1000</td><td class="num a">0.9425</td><td class="num b">0.8765</td><td class="delta">-0.0660</td><td class="band"><div class="track2"><i class="a" style="left:65.437%;width:12.277%"></i><b class="a" style="left:calc(72.394% - 1px)"></b><i class="b" style="left:7.627%;width:17.714%"></i><b class="b" style="left:calc(16.988% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · released</td><td class="num a">0.9630</td><td class="num b">0.9308</td><td class="delta">-0.0322</td><td class="band"><div class="track2"><i class="a" style="left:87.012%;width:4.987%"></i><b class="a" style="left:calc(89.553% - 1px)"></b><i class="b" style="left:55.788%;width:12.302%"></i><b class="b" style="left:calc(62.538% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A</td><td class="num a">0.9623</td><td class="num b">0.9313</td><td class="delta">-0.0310</td><td class="band"><div class="track2"><i class="a" style="left:86.210%;width:4.899%"></i><b class="a" style="left:calc(88.967% - 1px)"></b><i class="b" style="left:56.706%;width:12.149%"></i><b class="b" style="left:calc(62.961% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B</td><td class="num a">0.9628</td><td class="num b">0.9301</td><td class="delta">-0.0326</td><td class="band"><div class="track2"><i class="a" style="left:86.924%;width:4.548%"></i><b class="a" style="left:calc(89.386% - 1px)"></b><i class="b" style="left:56.225%;width:11.304%"></i><b class="b" style="left:calc(62.018% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A2</td><td class="num a">0.9628</td><td class="num b">0.9320</td><td class="delta">-0.0308</td><td class="band"><div class="track2"><i class="a" style="left:86.431%;width:5.942%"></i><b class="a" style="left:calc(89.451% - 1px)"></b><i class="b" style="left:57.436%;width:11.716%"></i><b class="b" style="left:calc(63.572% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B2</td><td class="num a">0.9621</td><td class="num b">0.9301</td><td class="delta">-0.0320</td><td class="band"><div class="track2"><i class="a" style="left:86.006%;width:5.314%"></i><b class="a" style="left:calc(88.799% - 1px)"></b><i class="b" style="left:55.601%;width:11.927%"></i><b class="b" style="left:calc(61.964% - 1px)"></b></div></td></tr>
+</tbody></table><div class="scale"><span>0.856</span><span>0.975</span></div></div>
+<div class="card"><div class="card-head"><h3>Organic · SNR 10</h3><span class="card-sub">7 datasets pooled, balance_datasets=True, 243 participants</span></div>
+<div class="legend"><span><i class="sw a"></i>median (paper)</span><span><i class="sw b"></i>mean</span></div>
+<table><tbody>
+<tr><td class="name">pretrained · released</td><td class="num a">0.9228</td><td class="num b">0.8542</td><td class="delta">-0.0685</td><td class="band"><div class="track2"><i class="a" style="left:73.901%;width:11.574%"></i><b class="a" style="left:calc(79.993% - 1px)"></b><i class="b" style="left:20.503%;width:14.024%"></i><b class="b" style="left:calc(27.556% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun</td><td class="num a">0.9250</td><td class="num b">0.8487</td><td class="delta">-0.0763</td><td class="band"><div class="track2"><i class="a" style="left:74.785%;width:13.027%"></i><b class="a" style="left:calc(81.687% - 1px)"></b><i class="b" style="left:15.176%;width:15.796%"></i><b class="b" style="left:calc(23.305% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun s1000</td><td class="num a">0.9234</td><td class="num b">0.8406</td><td class="delta">-0.0828</td><td class="band"><div class="track2"><i class="a" style="left:73.728%;width:12.639%"></i><b class="a" style="left:calc(80.495% - 1px)"></b><i class="b" style="left:7.627%;width:19.370%"></i><b class="b" style="left:calc(17.131% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · released</td><td class="num a">0.9352</td><td class="num b">0.9021</td><td class="delta">-0.0331</td><td class="band"><div class="track2"><i class="a" style="left:86.582%;width:5.791%"></i><b class="a" style="left:calc(89.468% - 1px)"></b><i class="b" style="left:58.473%;width:10.755%"></i><b class="b" style="left:calc(64.142% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A</td><td class="num a">0.9289</td><td class="num b">0.8925</td><td class="delta">-0.0364</td><td class="band"><div class="track2"><i class="a" style="left:79.639%;width:9.045%"></i><b class="a" style="left:calc(84.660% - 1px)"></b><i class="b" style="left:50.449%;width:12.268%"></i><b class="b" style="left:calc(56.824% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B</td><td class="num a">0.9316</td><td class="num b">0.9004</td><td class="delta">-0.0312</td><td class="band"><div class="track2"><i class="a" style="left:83.278%;width:6.473%"></i><b class="a" style="left:calc(86.758% - 1px)"></b><i class="b" style="left:55.997%;width:13.213%"></i><b class="b" style="left:calc(62.873% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A2</td><td class="num a">0.9323</td><td class="num b">0.9014</td><td class="delta">-0.0309</td><td class="band"><div class="track2"><i class="a" style="left:83.926%;width:7.012%"></i><b class="a" style="left:calc(87.257% - 1px)"></b><i class="b" style="left:58.374%;width:10.300%"></i><b class="b" style="left:calc(63.606% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B2</td><td class="num a">0.9302</td><td class="num b">0.8964</td><td class="delta">-0.0338</td><td class="band"><div class="track2"><i class="a" style="left:81.416%;width:7.121%"></i><b class="a" style="left:calc(85.662% - 1px)"></b><i class="b" style="left:52.811%;width:13.357%"></i><b class="b" style="left:calc(59.800% - 1px)"></b></div></td></tr>
+</tbody></table><div class="scale"><span>0.818</span><span>0.949</span></div></div></div></div>
+  <p>The median sits <strong>0.03–0.13 higher</strong> throughout, and the gap is widest exactly
+  where trials fail catastrophically. Note the fine-tuned checkpoints show a uniform ≈0.037 gap
+  while the pretrained rerun shows 0.131 — the spread of that gap is itself a fingerprint of
+  tail failures.</p>
+</section>
+
+<section>
+  <div class="section-head"><h2>Grouping · organic</h2>
+  <p>The pooled figure against a single dataset evaluated alone, at SNR ∞.</p></div>
+  <div class="cards"><div class="card"><div class="card-head"><h3>crank · SNR ∞</h3><span class="card-sub">per-dataset split vs the pooled figure above</span></div>
+<div class="legend"><span><i class="sw a"></i>pooled+balanced, mean</span><span><i class="sw b"></i>this dataset alone, mean</span></div>
+<table><tbody>
+<tr><td class="name">pretrained · released</td><td class="num a">0.8805</td><td class="num b">0.6585</td><td class="delta">-0.2219</td><td class="band"><div class="track2"><i class="a" style="left:88.128%;width:1.630%"></i><b class="a" style="left:calc(88.984% - 1px)"></b><i class="b" style="left:70.367%;width:8.107%"></i><b class="b" style="left:calc(74.479% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun</td><td class="num a">0.8135</td><td class="num b">0.2011</td><td class="delta">-0.6124</td><td class="band"><div class="track2"><i class="a" style="left:79.100%;width:9.078%"></i><b class="a" style="left:calc(84.609% - 1px)"></b><i class="b" style="left:7.627%;width:61.693%"></i><b class="b" style="left:calc(44.579% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun s1000</td><td class="num a">0.8684</td><td class="num b">0.5857</td><td class="delta">-0.2827</td><td class="band"><div class="track2"><i class="a" style="left:86.685%;width:2.711%"></i><b class="a" style="left:calc(88.194% - 1px)"></b><i class="b" style="left:59.544%;width:17.273%"></i><b class="b" style="left:calc(69.717% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · released</td><td class="num a">0.9239</td><td class="num b">0.8893</td><td class="delta">-0.0346</td><td class="band"><div class="track2"><i class="a" style="left:91.273%;width:1.056%"></i><b class="a" style="left:calc(91.826% - 1px)"></b><i class="b" style="left:88.096%;width:2.931%"></i><b class="b" style="left:calc(89.564% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A</td><td class="num a">0.9233</td><td class="num b">0.8873</td><td class="delta">-0.0359</td><td class="band"><div class="track2"><i class="a" style="left:91.210%;width:1.076%"></i><b class="a" style="left:calc(91.783% - 1px)"></b><i class="b" style="left:88.127%;width:2.538%"></i><b class="b" style="left:calc(89.435% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B</td><td class="num a">0.9235</td><td class="num b">0.9026</td><td class="delta">-0.0209</td><td class="band"><div class="track2"><i class="a" style="left:91.184%;width:1.142%"></i><b class="a" style="left:calc(91.796% - 1px)"></b><i class="b" style="left:89.499%;width:1.869%"></i><b class="b" style="left:calc(90.431% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A2</td><td class="num a">0.9248</td><td class="num b">0.9040</td><td class="delta">-0.0209</td><td class="band"><div class="track2"><i class="a" style="left:91.328%;width:1.045%"></i><b class="a" style="left:calc(91.886% - 1px)"></b><i class="b" style="left:89.251%;width:2.455%"></i><b class="b" style="left:calc(90.522% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B2</td><td class="num a">0.9231</td><td class="num b">0.9078</td><td class="delta">-0.0154</td><td class="band"><div class="track2"><i class="a" style="left:91.119%;width:1.203%"></i><b class="a" style="left:calc(91.774% - 1px)"></b><i class="b" style="left:89.795%;width:1.805%"></i><b class="b" style="left:calc(90.770% - 1px)"></b></div></td></tr>
+</tbody></table><div class="scale"><span>-0.481</span><span>1.049</span></div></div>
+<div class="card"><div class="card-head"><h3>whacamole · SNR ∞</h3><span class="card-sub">per-dataset split vs the pooled figure above</span></div>
+<div class="legend"><span><i class="sw a"></i>pooled+balanced, mean</span><span><i class="sw b"></i>this dataset alone, mean</span></div>
+<table><tbody>
+<tr><td class="name">pretrained · released</td><td class="num a">0.8805</td><td class="num b">0.9121</td><td class="delta">+0.0317</td><td class="band"><div class="track2"><i class="a" style="left:61.700%;width:9.764%"></i><b class="a" style="left:calc(66.830% - 1px)"></b><i class="b" style="left:71.441%;width:14.358%"></i><b class="b" style="left:calc(79.235% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun</td><td class="num a">0.8135</td><td class="num b">0.9067</td><td class="delta">+0.0932</td><td class="band"><div class="track2"><i class="a" style="left:7.627%;width:54.373%"></i><b class="a" style="left:calc(40.624% - 1px)"></b><i class="b" style="left:68.500%;width:16.046%"></i><b class="b" style="left:calc(77.117% - 1px)"></b></div></td></tr>
+<tr><td class="name">pretrained · rerun s1000</td><td class="num a">0.8684</td><td class="num b">0.9127</td><td class="delta">+0.0444</td><td class="band"><div class="track2"><i class="a" style="left:53.055%;width:16.240%"></i><b class="a" style="left:calc(62.097% - 1px)"></b><i class="b" style="left:72.084%;width:13.993%"></i><b class="b" style="left:calc(79.469% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · released</td><td class="num a">0.9239</td><td class="num b">0.9295</td><td class="delta">+0.0056</td><td class="band"><div class="track2"><i class="a" style="left:80.538%;width:6.328%"></i><b class="a" style="left:calc(83.848% - 1px)"></b><i class="b" style="left:78.105%;width:14.147%"></i><b class="b" style="left:calc(86.046% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A</td><td class="num a">0.9233</td><td class="num b">0.9294</td><td class="delta">+0.0062</td><td class="band"><div class="track2"><i class="a" style="left:80.161%;width:6.444%"></i><b class="a" style="left:calc(83.590% - 1px)"></b><i class="b" style="left:78.044%;width:14.329%"></i><b class="b" style="left:calc(86.008% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B</td><td class="num a">0.9235</td><td class="num b">0.9241</td><td class="delta">+0.0006</td><td class="band"><div class="track2"><i class="a" style="left:80.005%;width:6.839%"></i><b class="a" style="left:calc(83.670% - 1px)"></b><i class="b" style="left:75.555%;width:15.291%"></i><b class="b" style="left:calc(83.905% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · A2</td><td class="num a">0.9248</td><td class="num b">0.9287</td><td class="delta">+0.0038</td><td class="band"><div class="track2"><i class="a" style="left:80.866%;width:6.259%"></i><b class="a" style="left:calc(84.207% - 1px)"></b><i class="b" style="left:77.667%;width:14.392%"></i><b class="b" style="left:calc(85.703% - 1px)"></b></div></td></tr>
+<tr><td class="name">fine-tuned · B2</td><td class="num a">0.9231</td><td class="num b">0.9247</td><td class="delta">+0.0015</td><td class="band"><div class="track2"><i class="a" style="left:79.614%;width:7.206%"></i><b class="a" style="left:calc(83.538% - 1px)"></b><i class="b" style="left:75.450%;width:15.582%"></i><b class="b" style="left:calc(84.144% - 1px)"></b></div></td></tr>
+</tbody></table><div class="scale"><span>0.710</span><span>0.965</span</div>
+  <p>Pooling with <code>balance_datasets=True</code> upsamples every dataset to the largest row
+  count, so crank — five participants — is averaged in with whacamole's 176. Splitting per
+  dataset is what made the crank discrepancy legible; it also makes the bands honest about how
+  few clusters support them.</p>
+</section>
+
+<footer>
+  All variants recomputed from the same per-trial dumps, so differences are attributable purely
+  to method. Pooled metrics are reconstructed exactly from per-trial sufficient statistics
+  (<code>n, Σy, Σy², SS_res</code>), verified against direct computation. Percentile intervals,
+  no bias correction, no multiple-comparison adjustment.
+</footer>
+</div>
