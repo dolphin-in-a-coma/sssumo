@@ -2,9 +2,9 @@
 
 Diagnosis from the 2026-09-01 pulse-family study, which lost two of four runs' final
 checkpoints and spent ~90 minutes on infrastructure. The root cause turned out to be
-narrower than it looked, and fixable in the CLI itself. Both fixes have since shipped —
-see **What shipped** below; the diagnosis is kept because the symptoms recur on any
-machine where the patch is not applied.
+narrower than it looked, and fixable in the CLI itself. All three fixes have since
+shipped — see **What shipped** below; the diagnosis is kept because the symptoms recur on
+any machine where the patch is not applied.
 
 ## Root cause: the CLI never refreshes its proxy token
 
@@ -111,21 +111,53 @@ non-zero when the patch is absent, which is the check to run after a `colab upda
 **The patch only covers sessions created after it is applied** — a running session keeps
 the daemon it was started with. This is why A is not redundant with B.
 
-### C — VM-side push: not done, deliberately
+### C — VM-side push: `scripts/colab/vm_persist.py`
 
-It would need a write credential on rented hardware, and A+B already cut the exposure to
-one ~150 s poll interval with the final pull triggered by the return code rather than by
-a timer. The credential-free ways to get the same guarantee are already available and
-are the better answer here:
+Originally declined for needing a write credential on rented hardware. Two destinations
+remove that objection, so it shipped:
 
-- **Drive** — `drive:` source with `persist_to_drive: true` symlinks `weights/` and
-  `logs/` into Drive, so each checkpoint is durable as it is written. Needs one
-  interactive `colab drivemount` (it wants a TTY and hangs under an agent).
-- **Kaggle** — a batch kernel persists `/kaggle/working` on completion; there is no
-  reclaim window to lose.
+- **A Nextcloud/ownCloud share token is a per-share bearer capability, not an account
+  credential.** It is narrowly scoped, revocable by deleting the share, and already how
+  this project *reads* its dataset (`data_source` in `run.example.json`).
+- **The wandb key is already on the VM** for logging, so the `wandb` backend adds no
+  exposure that the run did not already have.
 
-Revisit only if a run appears whose artifacts cannot tolerate a 150 s window, and then
-with a narrowly-scoped, revocable, write-only destination — never a reusable credential.
+The mirror runs detached beside the training supervisor, started by `vm_launch.py`
+whenever `run.local.json` has a `persist` section. Each cycle it uploads every matching
+file whose size changed, **reads the stored size back**, and records what succeeded —
+so a restart re-sends nothing, and a truncated upload never counts as done. A file
+modified in the last 5 s is skipped, so a checkpoint still being written is not caught
+mid-`torch.save`. It is a separate process from training by design: a network failure
+must not be able to touch the run.
+
+Verified against `datacloud.helsinki.fi` (Nextcloud, ~700 GB free) before shipping:
+`MKCOL` / `PUT` / `PROPFIND` / `DELETE` all behave on the public-share endpoint, sizes
+match end to end, a re-run uploads nothing, and a grown log plus a new checkpoint upload
+exactly those two. Endpoint facts worth keeping:
+
+- `https://<host>/public.php/webdav/` with the share token as the **username and an empty
+  password**. Sending it as basic auth rather than in the URL keeps it out of tracebacks,
+  redirects and logs. (`public.php/dav/files/<token>/` works too but puts the token in
+  every URL — prefer the first.)
+- **`MKCOL` is not recursive**, and a `PUT` into a missing collection fails with `409`,
+  which does not name the cause. Create each level; an artifact name like
+  `weights/foo.pth` carries its own subdirectory.
+- A collection can return **`423 Locked`** to a `DELETE` issued right after uploads into
+  it. Deleting leaf-first works.
+
+**Check what a share grants before trusting it to a rented VM.** The share used here
+reports `sharePermissions` 31 — read + update + create + delete + share — so a leaked
+token could also read and wipe what was uploaded. A **file drop** (create only, 4) is the
+right shape for a mirror and is what the doc's original condition asked for:
+
+```bash
+curl -s "https://<host>/index.php/s/<token>" | grep -o 'sharePermissions" value="[^"]*"'
+```
+
+The value is base64-encoded.
+
+Drive with `persist_to_drive: true` remains the zero-credential option where a `drive:`
+source is already in use; it needs one interactive `colab drivemount`.
 
 ### The one rule that survives all three
 

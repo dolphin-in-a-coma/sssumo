@@ -47,3 +47,18 @@ p = subprocess.Popen(
 )
 print("supervisor pid", p.pid, flush=True)
 print("state:", state, "\nlog:", log, flush=True)
+
+# Mirror artifacts to durable storage as they are written, so a reclaimed VM
+# costs nothing. Detached and separate from training on purpose: a network
+# failure here must not touch the run.
+if (cfg.get("persist") or {}).get("backend"):
+    mirror_log = f"/content/{cfg['experiment_name']}.persist.log"
+    m = subprocess.Popen(
+        [sys.executable, "-u", "/content/vm_persist.py"],
+        start_new_session=True,
+        stdout=open(mirror_log, "wb", buffering=0), stderr=subprocess.STDOUT,
+    )
+    print("mirror pid", m.pid, "->", mirror_log, flush=True)
+else:
+    print("no persist section: artifacts exist only on this VM until pulled",
+          flush=True)

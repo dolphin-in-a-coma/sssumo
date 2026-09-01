@@ -32,6 +32,7 @@ colab --auth=oauth2 drivemount -s $SESSION
 colab --auth=oauth2 upload -s $SESSION scripts/colab/run.local.json /content/run.json
 colab --auth=oauth2 upload -s $SESSION scripts/train.py            /content/train.py
 colab --auth=oauth2 upload -s $SESSION scripts/colab/supervise.py  /content/supervise.py
+colab --auth=oauth2 upload -s $SESSION scripts/colab/vm_persist.py /content/vm_persist.py
 
 # 4. clone the pinned commit, install, stage data (~1 min from Drive, longer from the URL)
 colab --auth=oauth2 exec -s $SESSION -f scripts/colab/vm_setup.py --timeout 1800
@@ -75,14 +76,70 @@ run still works without it — losses and onset metrics also go to
 
 ## Keeping outputs alive
 
-`/content` dies with the VM, sometimes minutes after a run ends. Two options:
+`/content` dies with the VM, sometimes minutes after a run ends. Three options,
+in order of how little they leave to chance:
 
+- **`persist:` in `run.local.json`** — `vm_persist.py` runs on the VM alongside
+  training and mirrors each artifact to durable storage as it is written, so a
+  reclaimed VM costs nothing. Works with any `data_source`. See
+  **Mirroring artifacts off the VM** below.
 - **`drive:` source with `persist_to_drive: true`** — `weights/` and `logs/` are
   symlinked into Drive, so each epoch's checkpoint is durable as it is written.
   Data is still copied to local disk first, because reading 500 MB CSVs through
-  the Drive FUSE layer during evaluation is slow.
-- **`url:` source** — download each checkpoint from the polling loop as it
-  appears (`colab download`); don't wait for the run to finish.
+  the Drive FUSE layer during evaluation is slow. Needs one interactive
+  `colab drivemount`.
+- **`watch.py` from the host** — pulls each checkpoint as it appears. Use it
+  *as well*: it is also how you get artifacts onto your own machine and how you
+  learn the run finished.
+
+## Mirroring artifacts off the VM
+
+`vm_persist.py` is started by `vm_launch.py` whenever `run.local.json` has a
+`persist` section, detached and separate from training so a network failure
+cannot touch the run. Each cycle it uploads every matching file whose size has
+changed since the last upload, reads the stored size back, and records what
+succeeded — so a restart does not re-send the whole run, and a truncated upload
+is never mistaken for a good one.
+
+Two backends, chosen by `persist.backend`:
+
+- **`webdav`** — any Nextcloud/ownCloud public share, including the ones this
+  project already uses for data. The share token is the WebDAV username with an
+  empty password.
+- **`wandb`** — one versioned `wandb.Artifact` per file, under a
+  `<experiment>-artifacts` run. Reuses the key already uploaded for logging.
+- **`both`** — belt and braces.
+
+### The share token
+
+Never put it in `run.local.json`, in a command argument, or in the repo — it is a
+credential, exactly like the wandb key, and it is sent as HTTP basic auth so it
+never appears in a URL, a redirect or a traceback.
+
+```bash
+python - <<'EOF'
+import os
+key = "PASTE_THE_SHARE_TOKEN"          # the /s/<token> part of the share URL
+fd = os.open("/tmp/persist_token", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+os.write(fd, key.encode()); os.close(fd)
+EOF
+colab --auth=oauth2 upload -s $SESSION /tmp/persist_token /content/.persist_token
+shred -u /tmp/persist_token
+```
+
+**Prefer a file-drop (upload-only) share.** A Nextcloud share link is a bearer
+capability: whoever holds it gets whatever the share grants. A read/write share
+(`sharePermissions` 31 = read + update + create + delete + share) means a leaked
+token can also read and delete everything already uploaded. A file drop grants
+create only, which is all the mirror needs.
+
+Check what a share grants before trusting it to a rented VM:
+
+```bash
+curl -s "https://<host>/index.php/s/<token>" | grep -o 'sharePermissions" value="[^"]*"'
+```
+
+The value is base64; `31` is full access, `4` is create-only.
 
 If a VM is lost, set `"resume": true` to continue from the highest epoch
 checkpoint present. The configs' own `start_with_weights: false` would silently
@@ -93,6 +150,7 @@ restart from zero.
 | Script | Runs on | Purpose |
 |---|---|---|
 | `watch.py` | locally | keep the session reachable and pull every artifact as it appears |
+| `vm_persist.py` | the VM | mirror artifacts to durable storage as they are written |
 | `remint.py` | locally | rebuild a pruned session record from a live assignment |
 | `apply_cli_patch.py` | locally | give the CLI's keep-alive daemon a proxy-token refresh |
 | `compare_checkpoints.py` | the VM | paired comparison of two checkpoints on identical data |

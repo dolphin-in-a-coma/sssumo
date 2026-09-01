@@ -10,7 +10,18 @@
   "_data_source_note": "'url:<zip>' downloads the public dataset onto the VM. 'drive:/content/drive/MyDrive/<folder>' instead copies from a mounted Drive folder that already holds data/, weights/ and logs/ -- run 'colab drivemount' yourself first, it needs a TTY.",
 
   "persist_to_drive": false,
-  "_persist_note": "With a drive: source, symlink weights/ and logs/ into Drive so checkpoints survive the VM. With a url: source, poll and download them instead.",
+  "_persist_note": "With a drive: source, symlink weights/ and logs/ into Drive so checkpoints survive the VM.",
+
+  "persist": {
+    "backend": "webdav",
+    "webdav_url": "https://datacloud.helsinki.fi/public.php/webdav",
+    "webdav_token_file": "/content/.persist_token",
+    "remote_dir": "my-pretraining-run",
+    "include": ["weights/*.pth", "logs/*.txt"],
+    "interval": 60
+  },
+  "_persist_backend_note": "vm_persist.py mirrors artifacts off the VM as they appear, so a reclaimed VM costs nothing. backend is 'webdav' (a Nextcloud/ownCloud share), 'wandb' (versioned artifacts), or 'both'. Remove this section to disable.",
+  "_persist_token_note": "The share token is NOT in this file. Upload it as a file whose only content is the token, exactly like the wandb key. Prefer a file-drop (upload-only) share: a read/write share link also lets anyone holding it delete what you uploaded.",
 
   "config": "/content/sssumo/configs/config-0423-ModGaussian_ampl.yaml",
   "experiment_name": "my-pretraining-run",
