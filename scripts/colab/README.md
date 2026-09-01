@@ -126,6 +126,29 @@ refits the `fastkde` conditional distributions. At `--eval-datapoints 128` one
 extraction pass is ~50 s; uncapped it is several times that, and it happens once
 at step 0 plus once per epoch.
 
+## Losing the artifact you actually wanted
+
+A completed run's VM is reclaimed within minutes, so the *final* checkpoint is the one
+most likely to be lost — a poll interval longer than that window loses the race
+silently. This study lost epochs 23 and 24 of two 25-epoch runs to a 5-minute poll at
+~3 min/epoch. Two rules follow:
+
+- Poll every 2-3 minutes, and pull **every** checkpoint not already held, not just the
+  newest — a cycle spanning two epochs otherwise skips one for good.
+- Re-mint the proxy token inside the poll loop rather than as manual recovery. It
+  expires roughly hourly, so any unattended watch longer than an hour hits "Session not
+  found" on a healthy VM. `remint.py` takes `--config`; with parallel sessions every
+  recovery call must pass the same one the run uses, or it rebuilds the record in the
+  default store and the session stays unreachable.
+
+Two harness bugs worth avoiding: silencing a download's stderr and chaining with `&&`
+turns a failed transfer into silence, and `ls *.pth | tail -1` sorts lexicographically,
+so `_5.pth` outranks `_22.pth` and the high-water mark reads wrong.
+
+For unattended multi-hour work prefer a Kaggle batch kernel over a live session: it
+persists `/kaggle/working` on completion, so there is no reclaim window to lose. See
+the `kaggle-cli` skill for the GPU pinning and input-discovery rules that path needs.
+
 ## When a session "disappears"
 
 `colab exec` returning 404/401 usually does **not** mean the VM is gone — the
