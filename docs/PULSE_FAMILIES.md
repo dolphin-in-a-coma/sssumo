@@ -151,6 +151,34 @@ detector.
   nuisance at ~1/10 of the effect; formal replicates are not in.
 - **Synthetic only.** Recovery is only measurable where ground truth exists.
 
+## What is still open
+
+Three arms were in flight on Kaggle when this was written; each answers a question the
+epoch-12 matrix could not.
+
+| kernel | what it settles |
+|---|---|
+| `dolphininacoma/sssumo-ep22-beta-asym` | takes `beta_asym` 12 → 22, giving an **epoch-22 matrix for all four arms** and retiring the depth caveat above |
+| `dolphininacoma/sssumo-learn-beta` | with the generator pinned to a known asymmetric truth and the decoder starting from the standard assumption, **does training move the shape toward the truth?** |
+| `sssumo-learn-lgnb` | the same recovery test in the other family. **Never pushed** — Kaggle caps GPU kernels at 2 concurrent, and both slots were taken |
+
+Collect a finished one with `kaggle kernels output dolphininacoma/<slug> -p
+runs/0901-pulse-families/weights`; check with `kaggle kernels status`. The learned-shape
+arms log their shape parameters per epoch, so the answer is in the training log as well
+as the checkpoint.
+
+Beyond those:
+
+- **Replicates.** One run per arm. The two-arms-per-class design bounds the nuisance at
+  ~1/10 of the effect, but a formal replicate needs `--seed-offset` — `config.seed` does
+  not change the training data.
+- **Per-submovement shape.** The detector emits `[onset, amplitude, duration]` only, so a
+  run's pulses all share one shape. Adding shape channels collides with the dead
+  `shape[1] == 4` reconstruction-mask path in `models.py` and `training.py`; that has to
+  go first.
+- **Organic data.** Recovery is only measurable against ground truth, so every result
+  here is synthetic. What a mis-specified basis costs on real movement is unmeasured.
+
 ## Where the artefacts are
 
 `runs/0901-pulse-families/` (gitignored, on this machine):

@@ -8,7 +8,10 @@ this file records what is expensive to discover by reading the code.
 - `sssumo/` — the package. `models.py` (detector + differentiable reconstructor),
   `data.py` (synthetic generator, organic loader, KDE samplers), `training.py`
   (the loop), `utils.py` (Config, metrics, evaluation, bootstrap).
-- `scripts/train.py` — CLI entrypoint. `scripts/colab/` — remote-session tooling.
+- `scripts/train.py` — CLI entrypoint. `scripts/colab/` — remote-session tooling;
+  its README's **Running** section is the end-to-end recipe for a new GPU run,
+  including the watcher and the artifact mirror that keep one from losing its
+  checkpoints.
 - `notebooks/` — `Inference.ipynb` is the maintained demo; `Train.ipynb` calls
   `sssumo.training.train`; `Analysis - organic and synth.ipynb` produced the
   article's numbers **and is where the bootstrap settings live**.

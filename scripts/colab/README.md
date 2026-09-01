@@ -21,9 +21,19 @@ ever hold machine-specific paths or account names.
 
 ```bash
 SESSION=my-run
+EXPERIMENT=my-pretraining-run      # must equal experiment_name in run.local.json
+ROOT=/content/sssumo_run           # must equal root_dir
 
-# 1. allocate a GPU
-colab --auth=oauth2 new -s $SESSION --gpu T4
+# 0. once per machine: make the CLI refresh its own proxy token, so sessions
+#    stop going unreachable at the one-hour mark. Any reinstall wipes it.
+python scripts/colab/apply_cli_patch.py --apply
+
+# 1. allocate a GPU, then record the endpoint -- watch.py and remint.py both
+#    need it, and "the only live assignment" binds the wrong VM once yours dies
+colab --auth=oauth2 new -s $SESSION --gpu L4
+ENDPOINT=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser(
+  '~/.config/colab-cli/sessions.json')))['$SESSION']['endpoint'])")
+echo "$SESSION -> $ENDPOINT"
 
 # 2. (only for data_source "drive:") mount Drive -- needs a TTY, so run it yourself
 colab --auth=oauth2 drivemount -s $SESSION
@@ -33,6 +43,7 @@ colab --auth=oauth2 upload -s $SESSION scripts/colab/run.local.json /content/run
 colab --auth=oauth2 upload -s $SESSION scripts/train.py            /content/train.py
 colab --auth=oauth2 upload -s $SESSION scripts/colab/supervise.py  /content/supervise.py
 colab --auth=oauth2 upload -s $SESSION scripts/colab/vm_persist.py /content/vm_persist.py
+#    plus the secrets, as files -- see "The wandb key" and "The share token"
 
 # 4. clone the pinned commit, install, stage data (~1 min from Drive, longer from the URL)
 colab --auth=oauth2 exec -s $SESSION -f scripts/colab/vm_setup.py --timeout 1800
@@ -45,11 +56,50 @@ colab --auth=oauth2 exec -s $SESSION -f scripts/colab/vm_wait.py   --timeout 170
 
 # 6. the real run
 colab --auth=oauth2 exec -s $SESSION -f scripts/colab/vm_launch.py --timeout 180
-colab --auth=oauth2 exec -s $SESSION -f scripts/colab/vm_status.py --timeout 180   # poll
 
-# 7. always release the VM
+# 7. leave the watcher running: it keeps the session reachable, pulls every
+#    checkpoint as it lands, and releases the VM once the last one is verified
+python scripts/colab/watch.py -s $SESSION --endpoint $ENDPOINT \
+    --remote-dir $ROOT/weights --remote-dir $ROOT/logs \
+    --pattern "$EXPERIMENT"'_*.pth' --pattern "$EXPERIMENT"'.txt' \
+    --state /content/$EXPERIMENT.state.json \
+    --local-dir runs/$EXPERIMENT --hours 6 --stop-on-complete
+
+# 8. if you did not use --stop-on-complete, always release the VM yourself
 colab --auth=oauth2 stop -s $SESSION
 ```
+
+For a human-readable snapshot while the watcher runs — epochs done, min/epoch,
+projected finish — `colab --auth=oauth2 exec -s $SESSION -f scripts/colab/vm_status.py
+--timeout 180`. The kernel serialises cells, but the watcher's calls are short, so
+the two interleave fine.
+
+### Running several at once
+
+Give each run its own session file, and pass the **same** `--config` to every command
+including `watch.py` — a recovery that rebuilds the record in the default store leaves
+the session just as unreachable, silently:
+
+```bash
+export CFG=/tmp/colab-$SESSION.json
+colab --auth=oauth2 --config $CFG new -s $SESSION --gpu L4
+python scripts/colab/watch.py -s $SESSION --endpoint $ENDPOINT --config $CFG ...
+```
+
+L4 is capped at **two concurrent**; a third returns `Precondition Failed`. Capacity
+blocks (`Service Unavailable` on both L4 and T4) do happen and last tens of minutes —
+route to Kaggle rather than retrying, see `docs/COLAB_RELIABILITY.md`.
+
+### What to do when it breaks
+
+| symptom | it is | do |
+|---|---|---|
+| `exec` 404s, `colab sessions` still lists the endpoint | token expired, VM fine | the watcher re-mints; by hand, `<cli-python> scripts/colab/remint.py $SESSION $ENDPOINT` |
+| the endpoint is gone from `colab sessions` | VM reclaimed | new session, `"resume": true` in run.local.json |
+| watcher logs `WARNING: re-mint succeeded but ... no fresh token` | `--config` mismatch | pass the run's own `--config` to `watch.py` |
+
+`"resume": true` continues from the highest epoch checkpoint present. The configs'
+`start_with_weights: false` would otherwise silently restart from zero.
 
 `colab exec -f` passes no `argv`, which is why the VM-side tools read
 `/content/run.json` rather than taking flags.
