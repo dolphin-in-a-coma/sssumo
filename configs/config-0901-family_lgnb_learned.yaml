@@ -37,7 +37,7 @@ training:
   lr_decay_end: 31
   lr_decay_total_change: 1
   num_epochs: 25
-  reconstruction_loss_start: 10
+  reconstruction_loss_start: 5
   use_reconstruction_loss: false
   bn_dropout_freeze_start: 20
   start_with_weights: false
