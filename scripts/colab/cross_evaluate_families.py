@@ -115,7 +115,16 @@ def signed_onset_bias(mask_true, mask_pred, allowed_distance=5):
 
 
 def summarise(values):
-    """Mean and a 95% normal-approximation interval over trials."""
+    """Mean and a 95% normal-approximation interval over trials.
+
+    Some metrics come back as torch tensors still on the device (the submovement
+    counts are computed from the mask), and numpy cannot convert a CUDA tensor.
+    On CPU this passed silently, so it only surfaced on a GPU run.
+    """
+    if torch.is_tensor(values):
+        values = values.detach().cpu()
+    elif isinstance(values, (list, tuple)):
+        values = [v.detach().cpu().item() if torch.is_tensor(v) else v for v in values]
     values = np.asarray(values, dtype=float)
     values = values[np.isfinite(values)]
     if values.size == 0:
