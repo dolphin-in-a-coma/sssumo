@@ -328,6 +328,15 @@ class STEBinarizer(torch.autograd.Function):
 
 PRIMITIVE_FAMILIES = ('beta', 'gaussian', 'lgnb')
 
+# Which parameter pair each family actually reads. Only the active family's pair is
+# ever made trainable: the others get no gradient, so leaving them in the optimiser
+# would only clutter the logs with parameters that cannot move.
+FAMILY_PARAMETERS = {
+    'beta': ('beta_mean', 'beta_precision'),
+    'gaussian': ('gaussian_centre', 'gaussian_half_width'),
+    'lgnb': ('lgnb_mu', 'lgnb_sigma'),
+}
+
 
 class ContinuousPrimitive(Primitive):
     """A unit-area velocity pulse of finite support, on a fixed time grid.
@@ -396,20 +405,23 @@ class ContinuousPrimitive(Primitive):
         self.family = family
         self.eps = eps
 
-        def _pair(value):
+        active = FAMILY_PARAMETERS[self.family]
+
+        def _pair(name, value):
             tensor = torch.as_tensor(value, device=self.device, dtype=self.dtype)
             if tensor.dim() == 0:
                 tensor = torch.stack([tensor, torch.zeros_like(tensor)])
-            return nn.Parameter(tensor, requires_grad=not freeze_parameters)
+            trainable = (not freeze_parameters) and name in active
+            return nn.Parameter(tensor, requires_grad=trainable)
 
         # Kept as attributes for every family so that checkpoints and configs stay
         # loadable across families; only the active family's parameters are read.
-        self.beta_mean = _pair(beta_mean)
-        self.beta_precision = _pair(beta_precision)
-        self.gaussian_centre = _pair(gaussian_centre)
-        self.gaussian_half_width = _pair(gaussian_half_width)
-        self.lgnb_mu = _pair(lgnb_mu)
-        self.lgnb_sigma = _pair(lgnb_sigma)
+        self.beta_mean = _pair('beta_mean', beta_mean)
+        self.beta_precision = _pair('beta_precision', beta_precision)
+        self.gaussian_centre = _pair('gaussian_centre', gaussian_centre)
+        self.gaussian_half_width = _pair('gaussian_half_width', gaussian_half_width)
+        self.lgnb_mu = _pair('lgnb_mu', lgnb_mu)
+        self.lgnb_sigma = _pair('lgnb_sigma', lgnb_sigma)
 
         self.duration_range = duration_range
 

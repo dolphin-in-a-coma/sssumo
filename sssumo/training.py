@@ -186,7 +186,10 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
     criterion_mse = nn.MSELoss()
 
     basic_dataset = SyntheticDataset(**config.get_dataset_parameters())
-    reconstructor = basic_dataset.reconstruction_model
+    # The decoder, which may carry learnable shape parameters. When no generator
+    # override is configured this is the same object the dataset renders with, so
+    # behaviour matches earlier runs exactly.
+    reconstructor = config.reconstruction_model
 
     train_noise_condition = config.stat_snr_distribution
     noise_conditions_train = [train_noise_condition]
@@ -205,7 +208,17 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
         dataset = basic_dataset
     dataloader = data.DataLoader(dataset, batch_size=1, shuffle=False)
 
-    optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
+    # Shape parameters live on the reconstructor, not the detector, so they have to be
+    # handed to the optimiser explicitly -- unfreezing them alone would accumulate
+    # gradients that nothing ever steps.
+    shape_parameters = [p for p in reconstructor.parameters() if p.requires_grad]
+    optimizer = optim.Adam(list(model.parameters()) + shape_parameters,
+                           lr=config.learning_rate)
+    if shape_parameters:
+        log(f'Learning {len(shape_parameters)} primitive shape parameter tensors '
+            f'(family {reconstructor.primitive.family}); generator is '
+            f'{"separate and frozen" if config.generator_model is not reconstructor else "SHARED -- shape is unidentifiable"}',
+            config.log_file)
 
     scheduler_start = config.lr_decay_start
     scheduler_end = config.lr_decay_end
@@ -452,7 +465,15 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
         checkpoint_path = config.weights_file.replace('.pth', f'_{epoch}.pth')
         torch.save(model.state_dict(), checkpoint_path)
 
+        shape_report = ''
+        if shape_parameters:
+            active = reconstructor.primitive
+            named = {n: [round(v, 5) for v in t.detach().cpu().tolist()]
+                     for n, t in active.named_parameters() if t.requires_grad}
+            shape_report = f'\nPrimitive[{active.family}]: {named}'
+
         message = (f'Epoch {epoch} finished,'
+                   f'{shape_report}'
                    f'\nDetection Loss: {detection_loss_mean},'
                    f'\nDuration Loss: {duration_loss_mean},'
                    f' Amplitude Loss: {amplitude_loss_mean},'

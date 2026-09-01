@@ -268,6 +268,23 @@ class Config:
                 elif isinstance(self.duration_distribution[0], str) and self.duration_distribution[0] == 'TruncatedLogNormal':
                     reconstruction_model_kwargs['duration_range'] = [self.duration_distribution[3], self.duration_distribution[4]]
         self.reconstruction_model = STEContinuousReconstructor(**reconstruction_model_kwargs)
+
+        # The generator that renders synthetic ground truth is normally the same object
+        # as the decoder, which is fine while the pulse shape is frozen. Once the shape
+        # is learnable they must be separated: a shared object lets training reduce the
+        # reconstruction loss by moving the ground truth instead of fitting it, which
+        # leaves the shape unidentifiable. A `generator_primitive_*` key pins the
+        # generator to a fixed reference shape; without one, behaviour is unchanged.
+        generator_kwargs = dict(reconstruction_model_kwargs)
+        generator_overrides = {k[len('generator_'):]: getattr(self, k)
+                               for k in dir(self)
+                               if k.startswith('generator_primitive_')}
+        if generator_overrides:
+            generator_kwargs.update(generator_overrides)
+            generator_kwargs['freeze_primitive_parameters'] = True
+            self.generator_model = STEContinuousReconstructor(**generator_kwargs)
+        else:
+            self.generator_model = self.reconstruction_model
         
     @property
     def experiment_name(self) -> str:
@@ -282,7 +299,7 @@ class Config:
             self.log_file = f'{self.root_dir}/logs/{value}.txt'
     
     def get_dataset_parameters(self) -> Dict[str, Any]:
-        return {
+        params = {
             k: getattr(self, k)
             for k in [
                 'total_duration_distribution',
@@ -310,7 +327,11 @@ class Config:
             ]
             if hasattr(self, k)
         }
-    
+        # the dataset renders with the generator; the decoder is used by the loop
+        if 'reconstruction_model' in params:
+            params['reconstruction_model'] = self.generator_model
+        return params
+
     def __str__(self):
         return str(self.__dict__)
     
