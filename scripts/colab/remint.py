@@ -2,7 +2,11 @@
 
 Run with the colab CLI's own interpreter (the venv that has colab_cli installed;
 `head -1 $(which colab)` prints it):
-    <cli-python> scripts/colab/remint.py <session-name> [endpoint]
+    <cli-python> scripts/colab/remint.py <session-name> [endpoint] [--config PATH]
+
+Pass --config with the same path you pass to `colab --config`. Parallel runs each
+keep their own session file, and without this the record is rebuilt in the default
+store where those invocations will never look for it.
 
 The CLI caches a proxy token that expires (~1 h). When it does, every kernel
 request 404s and the CLI prunes the local record -- but the VM is usually still
@@ -17,9 +21,18 @@ import sys
 from colab_cli.common import state
 from colab_cli.state import SessionState
 
-name = sys.argv[1]
-endpoint = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] != "--any" else None
-allow_any = "--any" in sys.argv[2:]
+argv = sys.argv[1:]
+config_path = None
+if "--config" in argv:
+    i = argv.index("--config")
+    config_path = argv[i + 1]
+    del argv[i:i + 2]
+# must be set before state.store is first touched, or the store binds the default
+state.config_path = config_path
+
+name = argv[0]
+endpoint = argv[1] if len(argv) > 1 and argv[1] != "--any" else None
+allow_any = "--any" in argv[1:]
 
 assignments = list(state.client.list_assignments())
 if not assignments:
@@ -45,4 +58,5 @@ pi = match.runtime_proxy_info
 state.store.add(SessionState(name=name, token=pi.token, url=pi.url,
                              endpoint=match.endpoint, variant=match.variant.name,
                              accelerator=match.accelerator.name, kernel_id=None))
-print(f"re-minted '{name}' -> {match.endpoint} ({match.accelerator.name})")
+print(f"re-minted '{name}' -> {match.endpoint} ({match.accelerator.name})"
+      + (f" in {config_path}" if config_path else ""))
