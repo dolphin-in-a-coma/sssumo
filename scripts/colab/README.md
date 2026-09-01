@@ -128,6 +128,12 @@ at step 0 plus once per epoch.
 
 ## Losing the artifact you actually wanted
 
+> Root cause and the fix plan live in `docs/COLAB_RELIABILITY.md`: the CLI caches its
+> proxy token at `colab new` and never refreshes it, while the keep-alive daemon only
+> keeps the *assignment* alive — two independent clocks, which is why healthy VMs report
+> "Session not found" at the one-hour mark.
+
+
 A completed run's VM is reclaimed within minutes, so the *final* checkpoint is the one
 most likely to be lost — a poll interval longer than that window loses the race
 silently. This study lost epochs 23 and 24 of two 25-epoch runs to a 5-minute poll at

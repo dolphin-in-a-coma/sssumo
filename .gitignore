@@ -24,3 +24,6 @@ wandb/
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# Study run outputs (checkpoints + result CSVs), kept on disk but not in git
+runs/
