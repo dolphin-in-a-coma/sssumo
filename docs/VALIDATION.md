@@ -499,6 +499,37 @@ mean over all trials and matches the pooled figure the article already reports;
 trials does not outweigh one with 5. They differ materially only on Fitts (0.887 against
 0.883); use trial-weighted for consistency with the existing numbers.
 
+### What to actually report in the article
+
+**One interval: the conditional one.** Point estimate, 95% conditional interval, and the
+participant and trial counts beside them. The `n` columns are what keep narrow intervals
+from overstating — a reader who sees "5 participants" understands the scope without a
+second interval to signal caution.
+
+The population interval is defensible on six of the seven datasets, but it does not
+belong in the same table: two intervals per cell doubles the width and forces two
+questions at once, pointing (n = 2) would need a different treatment from every other
+row, and it invites exactly the overreach the conditional interval avoids. Put it in the
+figure, where the nested forest plot already carries it.
+
+Methods sentence:
+
+> Intervals are 95% percentile bootstrap intervals over trials (10 000 resamples),
+> stratified by participant so that participant composition is held fixed. They quantify
+> uncertainty in the reported value on this test set.
+
+Limitations sentence:
+
+> These intervals are conditional on the participants tested and do not support inference
+> to a wider population; test-set participant counts range from 2 to 181 per dataset.
+
+Everything else in this document — envelopes, tolerance and prediction intervals, τ, the
+cluster bootstrap, the per-chunk proposal — was computed to establish *which* method to
+trust, and stays here as the audit trail. A paper reporting five uncertainty measures
+reads as unsure of its own statistics. The one exception worth a sentence in discussion:
+**τ = 0 on crank** means its five participants are statistically indistinguishable, which
+strengthens that finding rather than weakening it.
+
 ### The same rule one rung up: population intervals
 
 Moving the resampled level from the trial to the participant turns the conditional
