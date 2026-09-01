@@ -162,7 +162,12 @@ class TDNNDetectorOld(Detector):
         return x
 
 class STEContinuousReconstructor(Reconstructor):
-    def __init__(self, duration_range=(4, 30), freeze_primitive_parameters=True, primitive_beta_mean=[0.5,0.0], primitive_beta_precision=[6.,0.0], device='cpu', dtype=torch.float32,
+    def __init__(self, duration_range=(4, 30), freeze_primitive_parameters=True,
+                 primitive_beta_mean=[0.5, 0.0], primitive_beta_precision=[6., 0.0],
+                 primitive_family='beta',
+                 primitive_gaussian_centre=[0.5, 0.0], primitive_gaussian_half_width=[2.5, 0.0],
+                 primitive_lgnb_mu=[0.0, 0.0], primitive_lgnb_sigma=[0.8, 0.0],
+                 device='cpu', dtype=torch.float32,
                  gradient_for_detection=False):
         super(STEContinuousReconstructor, self).__init__()
         device = torch.device(device)
@@ -178,6 +183,11 @@ class STEContinuousReconstructor(Reconstructor):
             freeze_parameters=freeze_primitive_parameters,
             beta_mean=primitive_beta_mean,
             beta_precision=primitive_beta_precision,
+            family=primitive_family,
+            gaussian_centre=primitive_gaussian_centre,
+            gaussian_half_width=primitive_gaussian_half_width,
+            lgnb_mu=primitive_lgnb_mu,
+            lgnb_sigma=primitive_lgnb_sigma,
             device=device,
             dtype=dtype
         ).to(device, dtype)
@@ -316,9 +326,62 @@ class STEBinarizer(torch.autograd.Function):
         # Return gradients for x; no gradient for only_negative_backprop (non-tensor)
         return grad_output, None, None
 
+PRIMITIVE_FAMILIES = ('beta', 'gaussian', 'lgnb')
+
+
 class ContinuousPrimitive(Primitive):
-    def __init__(self, duration_range=(4, 30), freeze_parameters=True, beta_mean=(0.5, 0.00), beta_precision=(6., 0.0), device='cpu', dtype=torch.float32):
-        # DONE: if sharpness can be order, it can, but I'll work with precision and mean.
+    """A unit-area velocity pulse of finite support, on a fixed time grid.
+
+    Every family is a probability density on normalised time ``s = t / duration``
+    restricted to ``s in (0, 1)``, discretised on the half-sample grid
+    ``t = 0.5, 1.5, ...`` and renormalised to sum to one. The pulse is then scaled
+    by the area (``auc``), so the amplitude channel means the same thing whichever
+    family is in use -- that invariant is what makes families comparable, and any
+    new family must preserve it.
+
+    Families (``family=``):
+
+    ``beta``
+        ``s**(a - 1) * (1 - s)**(b - 1)`` with ``a = mean * precision`` and
+        ``b = (1 - mean) * precision``. ``mean=0.5, precision=6`` gives Beta(3, 3),
+        which *is* the minimum-jerk profile ``30 s^2 (1-s)^2`` -- the two agree to
+        ~2e-8 on this grid, so minimum jerk is a frozen special case of this family
+        rather than a separate implementation.
+    ``gaussian``
+        A Gaussian truncated to the support, ``exp(-0.5 z^2)`` with
+        ``z = (s - centre) * 2 * half_width``, so the support spans
+        ``+/- half_width`` standard deviations. Symmetric, but with tails and a
+        peak sharpness that Beta(3, 3) cannot match.
+    ``lgnb``
+        The support-bounded lognormal: a logit-normal density,
+        ``exp(-0.5 ((logit(s) - mu) / sigma)^2) / (s (1 - s))``. Asymmetric for
+        ``mu != 0``, and finite-support by construction.
+
+    Each family parameter is a pair ``(intercept, slope)`` evaluated as
+    ``intercept + slope * duration``, so a shape may vary with pulse duration. The
+    slope is 0 in every shipped config.
+
+    Two numerical points that are load-bearing:
+
+    * Support is imposed by an explicit ``t < duration`` mask, *not* by letting
+      ``(1 - s)**(b - 1)`` vanish at ``s = 1``. The old code relied on the latter,
+      which silently restricts the usable parameter range: ``b < 1`` makes that
+      term diverge and produces inf pulses and NaN gradients. With the mask, the
+      whole ``(mean, precision)`` plane is usable.
+    * ``s`` is clamped to ``[eps, 1 - eps]`` before exponentiation so that
+      ``d/da s**(a-1) = s**(a-1) log s`` stays finite. With ``eps=1e-6`` the clamp
+      never binds on an in-support sample (the extreme grid points are
+      ``0.5/duration`` and ``1 - 0.5/duration``), so this is a no-op for the
+      forward pass and only regularises the gradient.
+    """
+
+    def __init__(self, duration_range=(4, 30), freeze_parameters=True,
+                 beta_mean=(0.5, 0.00), beta_precision=(6., 0.0),
+                 family='beta',
+                 gaussian_centre=(0.5, 0.0), gaussian_half_width=(2.5, 0.0),
+                 lgnb_mu=(0.0, 0.0), lgnb_sigma=(0.8, 0.0),
+                 eps=1e-6,
+                 device='cpu', dtype=torch.float32):
         super(ContinuousPrimitive, self).__init__()
         device = torch.device(device)
         if isinstance(dtype, str):
@@ -326,10 +389,28 @@ class ContinuousPrimitive(Primitive):
         self.device = device
         self.dtype = dtype
 
-        beta_mean = torch.tensor(beta_mean, device=self.device, dtype=self.dtype)
-        beta_precision = torch.tensor(beta_precision, device=self.device, dtype=self.dtype)
-        self.beta_mean = nn.Parameter(beta_mean, requires_grad=not freeze_parameters)
-        self.beta_precision = nn.Parameter(beta_precision, requires_grad=not freeze_parameters)
+        family = str(family).lower()
+        if family not in PRIMITIVE_FAMILIES:
+            raise ValueError(f"unknown primitive family {family!r}, "
+                             f"expected one of {PRIMITIVE_FAMILIES}")
+        self.family = family
+        self.eps = eps
+
+        def _pair(value):
+            tensor = torch.as_tensor(value, device=self.device, dtype=self.dtype)
+            if tensor.dim() == 0:
+                tensor = torch.stack([tensor, torch.zeros_like(tensor)])
+            return nn.Parameter(tensor, requires_grad=not freeze_parameters)
+
+        # Kept as attributes for every family so that checkpoints and configs stay
+        # loadable across families; only the active family's parameters are read.
+        self.beta_mean = _pair(beta_mean)
+        self.beta_precision = _pair(beta_precision)
+        self.gaussian_centre = _pair(gaussian_centre)
+        self.gaussian_half_width = _pair(gaussian_half_width)
+        self.lgnb_mu = _pair(lgnb_mu)
+        self.lgnb_sigma = _pair(lgnb_sigma)
+
         self.duration_range = duration_range
 
     def forward(self, x):
@@ -346,87 +427,73 @@ class ContinuousPrimitive(Primitive):
         auc = auc.unsqueeze(-1)
         duration = duration.unsqueeze(-1)
 
-        primitives = self.beta(duration)
+        primitives = self.profile(duration)
         primitives *= auc
 
         return primitives
-    
-    def beta(self, duration):
 
-        beta_means = self.beta_mean[0] + self.beta_mean[1] * duration
-        beta_precisions = self.beta_precision[0] + self.beta_precision[1] * duration
-        beta_alpha = beta_means * beta_precisions
-        beta_beta = (1 - beta_means) * beta_precisions
-
+    def _grid(self, duration):
+        """Half-sample grid, normalised time, and the in-support mask."""
         t = torch.arange(0.5, self.duration_range[1], 1, device=self.device, dtype=self.dtype)
-        # t = torch.arange(0, self.duration_range[1], 1, device=self.device, dtype=self.dtype)
-        # we suppose that a submovement starts and can end between two samples,
-        # which should be average starting point
-
+        # a submovement starts and can end between two samples, so the half-sample
+        # offset is the average starting point
         t = t.reshape(*[1] * (len(duration.shape) - 1), -1)
-        # DONE: probably need to fix dimensions
+
+        inside = (t < duration) & (duration > 0)
+
         normalized_t = torch.where(
             duration > 0,
-            t / duration,
-            torch.zeros_like(t) # Do I need gradient over t higher than duration actually?
+            t / torch.clamp(duration, min=1e-6),
+            torch.zeros_like(t)
         )
+        # clamped only to keep gradients finite at the ends; see the class docstring
+        normalized_t = torch.clamp(normalized_t, self.eps, 1 - self.eps)
 
-        normalized_t = torch.clamp(normalized_t, 0, 1)
+        return normalized_t, inside
 
-        beta_bells = normalized_t ** (beta_alpha - 1) * (1 - normalized_t) ** (beta_beta - 1)
-        debug = False
-        if debug:
-            for i in range(beta_bells.shape[-2]):
-                if beta_bells[0, i, :].sum() != 0 and beta_bells[0, i, :].sum() < float('inf'):
-                    plt.plot(beta_bells[0, i, :].detach().numpy(), label = f"Duration: {duration[0, i, 0].int().item()}, Sum: {beta_bells[0, i, :].sum().item()}")
-                    print(beta_bells[0, i, :])
-                    print(i)
-            plt.legend()
-            plt.show()
+    def _linear(self, pair, duration):
+        return pair[0] + pair[1] * duration
 
-        beta_bells = torch.where(
-            beta_bells.sum(dim=-1, keepdim=True) != 0,
-            beta_bells / beta_bells.sum(dim=-1, keepdim=True),
-            torch.zeros_like(beta_bells)
-        )
+    def profile(self, duration):
+        """Unit-sum pulses of the active family, one per (batch, time) entry."""
+        normalized_t, inside = self._grid(duration)
 
-        return beta_bells
-    
-    def beta_old(self, duration):
+        if self.family == 'beta':
+            mean = self._linear(self.beta_mean, duration)
+            precision = self._linear(self.beta_precision, duration)
+            alpha = mean * precision
+            beta = (1 - mean) * precision
+            bells = normalized_t ** (alpha - 1) * (1 - normalized_t) ** (beta - 1)
 
-        beta_means = self.beta_mean[0] + self.beta_mean[1] * duration
-        beta_precisions = self.beta_precision[0] + self.beta_precision[1] * duration
-        beta_alpha = beta_means * beta_precisions
-        beta_beta = (1 - beta_means) * beta_precisions
+        elif self.family == 'gaussian':
+            centre = self._linear(self.gaussian_centre, duration)
+            half_width = self._linear(self.gaussian_half_width, duration)
+            # s spans one unit across the support, so scaling by 2 * half_width
+            # puts the support edges at +/- half_width standard deviations
+            z = (normalized_t - centre) * 2 * half_width
+            bells = torch.exp(-0.5 * z ** 2)
 
-        t = torch.arange(0.5, self.duration_range[1], 1, dtype=torch.float32)
-        # we suppose that a submovement starts and can end between two samples,
-        # which should be average starting point
+        elif self.family == 'lgnb':
+            mu = self._linear(self.lgnb_mu, duration)
+            sigma = self._linear(self.lgnb_sigma, duration)
+            logit = torch.log(normalized_t) - torch.log1p(-normalized_t)
+            bells = (torch.exp(-0.5 * ((logit - mu) / sigma) ** 2)
+                     / (normalized_t * (1 - normalized_t)))
 
-        t = t.reshape(*[1] * (len(duration.shape) - 1), -1)
-        # DONE: probably need to fix dimensions
+        else:  # unreachable: guarded in __init__
+            raise ValueError(self.family)
 
-        beta_bells = (t / (duration + 1e-5)) ** (beta_alpha - 1) * (1 - t / (duration + 1e-5)) ** (beta_beta - 1)
-        after_duration = t >= duration
-        beta_bells[after_duration] = 0
+        bells = torch.where(inside, bells, torch.zeros_like(bells))
 
-        debug = False
-        if debug:
-            for i in range(beta_bells.shape[-2]):
-                if beta_bells[0, i, :].sum() > 0 and beta_bells[0, i, :].sum() < float('inf'):
-                    plt.plot(beta_bells[0, i, :].detach().numpy(), label = f"Duration: {duration[0, i, 0].int().item()}, Sum: {beta_bells[0, i, :].sum().item()}")
-                    print(beta_bells[0, i, :])
-                    print(i)
-            plt.legend()
-            plt.show()
+        total = bells.sum(dim=-1, keepdim=True)
+        bells = torch.where(total != 0, bells / total, torch.zeros_like(bells))
 
-        
-        beta_bells = beta_bells / beta_bells.sum(dim=-1, keepdim=True)
-        beta_bells = torch.nan_to_num(beta_bells, nan=0, posinf=0, neginf=0)
-        beta_bells = torch.clamp(beta_bells, 0, None)
+        return bells
 
-        return beta_bells
-    
+    def beta(self, duration):
+        """Deprecated alias for :meth:`profile`, kept for notebooks."""
+        return self.profile(duration)
+
 
 # deprecated
 

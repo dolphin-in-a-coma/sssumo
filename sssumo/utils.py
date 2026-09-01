@@ -251,7 +251,16 @@ class Config:
         self.datasets_dir = f'{self.root_dir}/{self.datasets_dir}'
         
         # Initialize reconstruction model
-        reconstruction_model_kwargs = {k: getattr(self, k) for k in ['gradient_for_detection', 'device', 'dtype'] if hasattr(self, k)}
+        reconstruction_model_kwargs = {k: getattr(self, k) for k in [
+            'gradient_for_detection', 'device', 'dtype',
+            # primitive shape family and its parameters, from an optional
+            # `primitive:` section in the YAML; absent means Beta(3, 3) = minimum jerk
+            'freeze_primitive_parameters',
+            'primitive_family',
+            'primitive_beta_mean', 'primitive_beta_precision',
+            'primitive_gaussian_centre', 'primitive_gaussian_half_width',
+            'primitive_lgnb_mu', 'primitive_lgnb_sigma',
+        ] if hasattr(self, k)}
         if hasattr(self, 'duration_distribution'):
             if isinstance(self.duration_distribution, list):
                 if len(self.duration_distribution) == 2:
