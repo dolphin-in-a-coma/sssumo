@@ -449,49 +449,70 @@ Among fine-tuned checkpoints only `ft_A` shows a crank deficit that survives
 (−0.060 at SNR 10, p = 0.0001); the other three are within noise, and two are
 slightly *better* than the released checkpoint at SNR ∞.
 
-## Per-participant bands and the dataset envelope
+## Reportable intervals, conditional on the participants we tested
 
-Everything above frames uncertainty as inference about a population. For the
-article's performance claim we do not need that, and with 2–10 test participants
-per dataset we could not support it anyway. The claim we can support is
-conditional: *every participant we tested lands in this range, accounting for
-noise in each participant's own estimate.*
+Everything above frames uncertainty as inference about a population. The article's
+performance claim does not need that, and with 2–10 test participants per dataset it
+could not support it. The claim we can support is: *this is how well the method works
+on our data, and this is how sure we are of that number.*
 
-Constructed in two levels, by `scripts/analysis/participant_bands.py`:
+One decision produces the whole procedure. **Resample trials, stratified by
+participant.** Stratification holds the participant composition fixed, which is what
+makes the interval a statement about our data rather than about people we did not test.
 
-- **Per participant** — resample that participant's own trials (2 000 draws),
-  take the 2.5/97.5 percentiles. Each participant gets an estimate and a band.
-- **Dataset aggregate** — the **envelope** `[min_i L_i, max_i U_i]`: the lowest
-  lower bound and the highest upper bound over participants.
+Nothing coarser is resampled — that would be the population claim. **Nothing finer needs
+to be**, and this is the part that is easy to get wrong: each trial's observed metric is
+already a noisy realisation, so the spread across trials carries the within-trial noise
+with it. Adding a sample- or chunk-level bootstrap on top double-counts it. Simulated at
+comparable variance levels (`v_between = 0.0025`, `v_within = 0.00225`), the trial
+bootstrap alone recovers the analytic standard error — 0.00488 against 0.00487 — while
+adding a within-trial level inflates it by 1.201, matching the predicted double-count
+factor `sqrt(v_b + 2·v_w) / sqrt(v_b + v_w)` = 1.214.
 
-No participant is resampled, so nothing here is a population statement. Released
-fine-tuned checkpoint, reconstruction R², noiseless:
+The implementation is checked against the closed-form stratified standard error
+`sqrt(Σ_p (n_p/n)² · s_p²/n_p)`, where `n_p` is participant *p*'s trial count and `s_p`
+their within-participant trial standard deviation. Bootstrap and closed form agree to
+within 1.4% on every dataset where stratification applies.
 
-| Dataset | n | Median | IQR | Envelope | Width |
-|---|---|---|---|---|---|
-| pointing | 2 | 0.983 | 0.982–0.984 | 0.979–0.987 | 0.008 |
-| crank | 5 | 0.890 | 0.881–0.890 | 0.867–0.901 | 0.034 |
-| object_moving | 5 | 0.971 | 0.969–0.974 | 0.958–0.978 | 0.021 |
-| steering | 9 | 0.971 | 0.969–0.976 | 0.963–0.982 | 0.019 |
-| Fitts | 10 | 0.885 | 0.871–0.908 | 0.787–0.949 | 0.162 |
-| tablet_writing | 44 | 0.867 | 0.850–0.880 | 0.766–0.942 | 0.176 |
-| whacamole | 181 | 0.959 | 0.922–0.970 | 0.619–0.988 | 0.369 |
+**Released fine-tuned checkpoint, reconstruction R², 95% interval:**
 
-**The envelope widens with participant count** — it is a max/min statistic, and
-across these datasets its width tracks n at r = 0.92. Whacamole's 0.369 against
-pointing's 0.008 is mostly 181 participants against 2, not a reliability
-difference. Report the IQR alongside it whenever datasets of different size are
-compared.
+| Dataset | Participants | Trials | Trials each | SNR 10 | SNR 20 | Noiseless |
+|---|---|---|---|---|---|---|
+| pointing | 2 | 683 | 332–351 | 0.968 [0.966, 0.970] | 0.981 [0.979, 0.983] | 0.983 [0.981, 0.984] |
+| crank | 5 | 1 000 | 200 | 0.888 [0.884, 0.893] | 0.923 [0.919, 0.928] | 0.887 [0.881, 0.892] |
+| object_moving | 5 | 800 | 160 | 0.920 [0.912, 0.927] | 0.975 [0.973, 0.977] | 0.971 [0.969, 0.973] |
+| steering | 9 | 360 | 40 | 0.944 [0.943, 0.944] | 0.970 [0.970, 0.971] | 0.973 [0.972, 0.973] |
+| Fitts | 10 | 5 420 | 432–652 | 0.873 [0.870, 0.876] | 0.886 [0.883, 0.889] | 0.887 [0.884, 0.890] |
+| tablet_writing | 44 | 3 801 | 5–572 | 0.809 [0.806, 0.811] | 0.856 [0.854, 0.858] | 0.864 [0.862, 0.866] |
+| whacamole\* | 181 | 181 | 1 | 0.901 [0.890, 0.911] | 0.926 [0.915, 0.936] | 0.929 [0.918, 0.939] |
 
-An equal-weight **mixture** of the participants' bootstrap draws is computed too,
-as the narrower alternative. It is not the headline number: with five
-participants its 2.5th percentile sits 0.025 × 5 = 0.125 participant-equivalents
-into the tail, i.e. inside the lowest participant's own trial noise, so each
-endpoint describes one participant rather than the dataset.
+\* **whacamole has exactly one trial per participant.** Participants and trials are the
+same unit there, stratified resampling has nothing to vary, and no conditional interval
+exists. It is resampled unstratified and its interval therefore also carries participant
+variation. Every other dataset is genuinely conditional.
 
-Figure: `docs/participant_bands.html` (caterpillar per dataset, every checkpoint
-× metric × noise). Data: `docs/organic_participant_bands.csv` (18 432 rows, one
-per participant × cell) and `docs/organic_envelope.csv`.
+Two estimands are reported in `docs/dataset_intervals.csv`. **Trial-weighted** is the
+mean over all trials and matches the pooled figure the article already reports;
+**participant-balanced** is the mean of the participant means, so a participant with 572
+trials does not outweigh one with 5. They differ materially only on Fitts (0.887 against
+0.883); use trial-weighted for consistency with the existing numbers.
+
+### The same procedure at participant scope
+
+Scoped to one person — resample that participant's own trials — the identical procedure
+gives each participant an estimate and a band
+(`scripts/analysis/participant_bands.py`, `docs/organic_participant_bands.csv`). These
+are context for the dataset interval, **not a second uncertainty to add to it**: the
+dataset interval already contains them.
+
+An earlier draft aggregated those participant bands into an *envelope*
+`[min_i L_i, max_i U_i]`. That is superseded. The envelope is a max/min statistic, so it
+widens with participant count for no statistical reason — subsampling whacamole at fixed
+heterogeneity, its width grows 0.135 → 0.369 as n goes 5 → 181, while the interquartile
+range stays flat at ~0.05. `docs/organic_envelope.csv` is retained only as the record of
+that check.
+
+Figure: `docs/score_intervals.html`.
 
 ## Reproducing this
 

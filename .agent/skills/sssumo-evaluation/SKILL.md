@@ -26,23 +26,51 @@ within one dataset.
 metric exactly, so every interval variant can be recomputed later without a GPU.
 Dump once, then explore methods locally.
 
-## The unit of analysis decides the answer
+## First decide the target, then the unit
 
-Trials cluster within participant. On steering the intraclass correlation is
-≈0.7, so a trial-level bootstrap makes the interval **three times too narrow**.
-Do not bootstrap over trials for organic data.
+Two different questions get two different intervals, and mixing them up is the
+main way to go wrong here.
 
-The three defensible options, all implemented:
+**"Would this hold for other people?"** — a population claim. Participants are the
+unit. Trials cluster within participant (intraclass correlation ≈0.7 on
+steering), so a *pooled* trial bootstrap is about three times too narrow. Use:
 
 - `--organic-interval participant-t` — each participant contributes one score,
-  interval is the ordinary t across participants. **Recommended default**: the
-  degrees of freedom match the design and the sample size is visible in the width.
-- `--organic-interval cluster-bootstrap` — the project's established method, and
-  what the analysis notebook used. Note it is a *weighted-row approximation* of a
+  ordinary t across participants. **Default for a population claim**: the degrees
+  of freedom match the design and the sample size shows up in the width.
+- `--organic-interval cluster-bootstrap` — the project's established method and
+  what the analysis notebook used. It is a *weighted-row approximation* of a
   cluster bootstrap, not the canonical one.
 - `--organic-interval participant-spread` — median with 2.5/97.5 percentiles, or
-  min/max below n = 40 where those tails are not estimable. Describes how much
-  people differ, which is not the same question as how uncertain the mean is.
+  min/max below n = 40. Describes how much people differ, which is a different
+  question from how uncertain the mean is.
+
+**"How well does it work on our data?"** — a conditional claim, and what the
+article actually needs, since 2–10 test participants cannot support the other
+one. Trials are the unit, **stratified by participant** so the participant
+composition is held fixed. `scripts/analysis/dataset_intervals.py`. The interval
+is much narrower than the participant-t one, and that is correct — it excludes
+participant variation on purpose, because we are not generalising over people.
+
+## Resample exactly one level: the coarsest you generalise over
+
+Everything finer is already in the observed spread. Each trial's metric is itself
+a noisy realisation, so the variation across trials already carries within-trial
+noise; adding a sample-, chunk-, or block-level bootstrap on top **double-counts**
+it. Verified by simulation at comparable variance levels: the trial bootstrap
+alone recovers the analytic SE (0.00488 vs 0.00487), while adding a within-trial
+level inflates it by 1.201 against a predicted double-count factor of 1.214.
+
+This is why no per-sample dump is needed, and why chunking trials to get "finer"
+error bars is wasted GPU time.
+
+Check any new implementation against the closed-form stratified SE,
+`sqrt(Σ_p (n_p/n)² · s_p²/n_p)` — they should agree to a percent or two.
+
+**whacamole has one trial per participant.** Stratified resampling has nothing to
+vary there, so no conditional interval exists; it falls back to unstratified and
+its interval carries participant variation. Anything that reports per-participant
+uncertainty on whacamole is reporting zero-width bands.
 
 For "does this reproduction match", use `compare_checkpoints.py --paired-t`:
 pairing is exact because all checkpoints see identically seeded trials, which
