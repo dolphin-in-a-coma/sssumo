@@ -92,8 +92,9 @@ restart from zero.
 
 | Script | Runs on | Purpose |
 |---|---|---|
+| `watch.py` | locally | keep the session reachable and pull every artifact as it appears |
 | `remint.py` | locally | rebuild a pruned session record from a live assignment |
-| `checkpoint_puller.py` | locally | download checkpoints from an ephemeral VM as they appear |
+| `apply_cli_patch.py` | locally | give the CLI's keep-alive daemon a proxy-token refresh |
 | `compare_checkpoints.py` | the VM | paired comparison of two checkpoints on identical data |
 | `wandb_query.py` | locally | query the wandb API using `~/.netrc`, nothing installed |
 | `wandb_compare_runs.py` | locally | per-epoch trajectory comparison between runs |
@@ -128,28 +129,38 @@ at step 0 plus once per epoch.
 
 ## Losing the artifact you actually wanted
 
-> Root cause and the fix plan live in `docs/COLAB_RELIABILITY.md`: the CLI caches its
-> proxy token at `colab new` and never refreshes it, while the keep-alive daemon only
-> keeps the *assignment* alive — two independent clocks, which is why healthy VMs report
-> "Session not found" at the one-hour mark.
-
-
 A completed run's VM is reclaimed within minutes, so the *final* checkpoint is the one
-most likely to be lost — a poll interval longer than that window loses the race
-silently. This study lost epochs 23 and 24 of two 25-epoch runs to a 5-minute poll at
-~3 min/epoch. Two rules follow:
+most likely to be lost, and the proxy token expires an hour into a run that may last
+four. `docs/COLAB_RELIABILITY.md` has the diagnosis; `watch.py` is the answer, and
+replaces the hand-rolled poll loop this study lost two final checkpoints to:
 
-- Poll every 2-3 minutes, and pull **every** checkpoint not already held, not just the
-  newest — a cycle spanning two epochs otherwise skips one for good.
-- Re-mint the proxy token inside the poll loop rather than as manual recovery. It
-  expires roughly hourly, so any unattended watch longer than an hour hits "Session not
-  found" on a healthy VM. `remint.py` takes `--config`; with parallel sessions every
-  recovery call must pass the same one the run uses, or it rebuilds the record in the
-  default store and the session stays unreachable.
+```bash
+python scripts/colab/watch.py -s $SESSION --endpoint $ENDPOINT \
+    --remote-dir /content/sssumo/weights --pattern "$EXPERIMENT"'_*.pth' \
+    --state /content/$EXPERIMENT.state.json --local-dir runs/$EXPERIMENT
+```
 
-Two harness bugs worth avoiding: silencing a download's stderr and chaining with `&&`
-turns a failed transfer into silence, and `ls *.pth | tail -1` sorts lexicographically,
-so `_5.pth` outranks `_22.pth` and the high-water mark reads wrong.
+It re-mints the token from the JWT's own `exp` *before* it expires, polls every 150 s
+(under the reclaim window), pulls every file whose local size does not match the
+remote's rather than only the newest, and does the final pull the moment the supervisor
+records a return code. Add `--config` when the run uses one, and `--stop-on-complete`
+to release the VM once the last artifact is verified.
+
+`--endpoint` is worth passing whenever more than one session is live: without it a
+recovery binds whatever assignment happens to be up, which is a *different* run's VM
+once yours is gone.
+
+To fix the token expiry at the source instead, patch the CLI:
+
+```bash
+python scripts/colab/apply_cli_patch.py --apply
+```
+
+That gives the keep-alive daemon — which already runs on a timer and knows the
+endpoint — a proxy-token refresh, so sessions created afterwards never go unreachable.
+It is a local fork of a third-party package, so re-run `apply_cli_patch.py` with no
+arguments after any `colab update` or reinstall; it exits non-zero when the patch is
+gone. `watch.py` does not depend on it.
 
 For unattended multi-hour work prefer a Kaggle batch kernel over a live session: it
 persists `/kaggle/working` on completion, so there is no reclaim window to lose. See
@@ -175,10 +186,13 @@ detached is still running. Recover the record instead of allocating a new VM:
 If the endpoint is absent, the VM really was reclaimed; resume from the last
 checkpoint with `--resume`.
 
-The underlying cause is usually a missing `colaboratory` OAuth scope, which stops
-the keep-alive daemon refreshing — and then the VM *does* get reclaimed, mid-run.
-Check with `colab --auth=oauth2 whoami`; if `https://www.googleapis.com/auth/colaboratory`
-is not listed, force a fresh consent flow:
+The usual cause is simply the token clock running out — on an unpatched CLI this
+happens to every session at the one-hour mark, daemon and scopes healthy. A missing
+`colaboratory` OAuth scope produces the same symptom by a different route: it stops
+the keep-alive daemon, and then the VM really *is* reclaimed, mid-run. Tell them apart
+by whether `colab sessions` still lists the endpoint. To check the scope:
+`colab --auth=oauth2 whoami`; if `https://www.googleapis.com/auth/colaboratory` is not
+listed, force a fresh consent flow:
 
 ```bash
 rm ~/.config/colab-cli/token.json && colab --auth=oauth2 sessions

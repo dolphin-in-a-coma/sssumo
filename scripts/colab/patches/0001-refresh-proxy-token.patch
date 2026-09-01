@@ -1,0 +1,123 @@
+diff -u -r a/colab_cli/commands/session.py b/colab_cli/commands/session.py
+--- a/colab_cli/commands/session.py	2026-09-01 21:50:24
++++ b/colab_cli/commands/session.py	2026-09-01 21:50:44
+@@ -12,6 +12,8 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++import base64
++import json
+ import os
+ import subprocess
+ import sys
+@@ -383,6 +385,62 @@
+     typer.echo("[colab] Session terminated.")
+ 
+ 
++# The runtime proxy token is minted once, when the VM is assigned, and lasts
++# about an hour -- while the assignment itself lives for many hours behind this
++# very daemon. Nothing refreshed the token, so the two clocks diverged: at ~60
++# minutes every kernel request 404s on a perfectly healthy VM, and the CLI then
++# prunes the local record, reporting "Session not found" for a machine that is
++# still running the user's job. The keep-alive daemon is the right owner of the
++# refresh: it already runs on a timer, per session, and knows the endpoint.
++PROXY_TOKEN_REFRESH_MARGIN_SECONDS = 900
++
++
++def proxy_token_expiry(token: str) -> Optional[float]:
++    """`exp` out of the proxy token, which is a plain JWT.
++
++    None when the token cannot be read, which callers should treat as "refresh
++    it" rather than "it is fine".
++    """
++    try:
++        body = token.split(".")[1]
++        body += "=" * (-len(body) % 4)
++        return float(json.loads(base64.urlsafe_b64decode(body))["exp"])
++    except Exception:
++        return None
++
++
++def refresh_proxy_token(s: SessionState) -> bool:
++    """Re-mint the cached proxy token if it is close to expiring.
++
++    True when a fresh token was written to the store. A missing assignment is
++    not an error here -- the keep-alive call is what reports a lost VM.
++    """
++    from colab_cli.common import state
++
++    exp = proxy_token_expiry(s.token)
++    if exp is not None:
++        if exp - time.time() > PROXY_TOKEN_REFRESH_MARGIN_SECONDS:
++            return False
++
++    assignment = next(
++        (a for a in state.client.list_assignments() if a.endpoint == s.endpoint),
++        None,
++    )
++    if assignment is None:
++        return False
++
++    info = assignment.runtime_proxy_info
++    # Only the two token fields, so an exec's concurrently written kernel_id
++    # survives.
++    state.store.update(s.name, token=info.token, url=info.url)
++    state.history.log_event(
++        s.name,
++        "proxy_token_refreshed",
++        {"expires_in_seconds": info.token_expires_in_seconds},
++    )
++    return True
++
++
+ def spawn_keep_alive(
+     endpoint: str, session_name: str, auth_provider=None, config_path=None
+ ):
+@@ -458,6 +516,18 @@
+             extra["expected_endpoint"] = endpoint
+             extra["actual_endpoint"] = s.endpoint
+             break
++
++        # Before the keep-alive, not after: if keep-alive has started failing,
++        # a usable token is exactly what you need to rescue artifacts from the
++        # VM in the time it has left.
++        try:
++            refresh_proxy_token(s)
++        except Exception as e:
++            state.history.log_event(
++                session_name,
++                "proxy_token_refresh_error",
++                {"error_type": type(e).__name__, "error": str(e)[:500]},
++            )
+ 
+         try:
+             state.client.keep_alive_assignment(endpoint)
+diff -u -r a/colab_cli/state.py b/colab_cli/state.py
+--- a/colab_cli/state.py	2026-09-01 21:50:24
++++ b/colab_cli/state.py	2026-09-01 21:50:44
+@@ -142,6 +142,25 @@
+             sessions = self._load_raw(f)
+             return sessions.get(name)
+ 
++    def update(self, name: str, **fields) -> Optional[SessionState]:
++        """Read-modify-write a subset of one session's fields under the lock.
++
++        `add` replaces the whole record, so a writer that only means to change
++        one field would clobber anything another process wrote in between --
++        e.g. the `kernel_id` an in-flight `exec` had just recorded. Returns the
++        updated state, or None if the session is not in the store.
++        """
++        with self._lock_exclusive() as f:
++            sessions = self._load_raw(f)
++            s = sessions.get(name)
++            if s is None:
++                return None
++            for key, value in fields.items():
++                setattr(s, key, value)
++            self._save_raw(f, sessions)
++            return s
++
++
+     def remove(self, name: str):
+         with self._lock_exclusive() as f:
+             sessions = self._load_raw(f)
