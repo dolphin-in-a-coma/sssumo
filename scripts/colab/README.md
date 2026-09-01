@@ -159,7 +159,7 @@ restart from zero.
 | `score_checkpoints.py` | the VM | absolute scores with intervals, both domains |
 | `diagnose_dataset.py` | the VM | per-trial diagnosis of a gap between two checkpoints |
 
-`watch.py`, `remint.py`, `supervise.py` and `apply_cli_patch.py` are vendored here so
+`watch.py`, `remint.py`, `supervise.py`, `vm_persist.py` and `apply_cli_patch.py` are vendored here so
 the repo stands alone; the `colab-operator` skill carries the same four as its reusable
 copies. They were identical when written — if you fix a bug in one, fix it in both.
 
