@@ -39,10 +39,12 @@ import torch  # noqa: E402
 
 from sssumo.data import SyntheticDataset  # noqa: E402
 from sssumo.models import TDNNDetector  # noqa: E402
+from sssumo.models import STEBinarizer  # noqa: E402
 from sssumo.utils import (  # noqa: E402
     Config,
     calculate_reconstruction_metrics,
     calculate_supervised_metrics,
+    match_onsets_with_predictions,
 )
 
 ARMS = ('minjerk', 'gaussian', 'beta_asym', 'lgnb')
@@ -86,6 +88,30 @@ def eval_config(arm, root_dir, batch_size, seed):
     config.num_samples = 1
     config.refractory_mode = 'percentages'
     return config
+
+
+def signed_onset_bias(mask_true, mask_pred, allowed_distance=5):
+    """Mean (predicted onset - true onset) over matched pairs, per trial.
+
+    `Onset_Distance` is unsigned, so it cannot say *which way* a mismatched decoder
+    slides its onsets. It should slide: the asymmetric families peak at 0.33 of the
+    duration where the symmetric ones peak at 0.50, so a decoder anchored to the
+    wrong peak-to-onset lag has a systematic, signed offset. Positive = late.
+    """
+    binarized = STEBinarizer.apply(mask_pred)
+    biases = []
+    for i in range(mask_true.shape[0]):
+        poses_true = torch.nonzero(mask_true[i:i + 1]).cpu().numpy()
+        poses_pred = torch.nonzero(binarized[i:i + 1]).cpu().numpy()
+        if len(poses_true) == 0 or len(poses_pred) == 0:
+            biases.append(float('nan'))
+            continue
+        matched = match_onsets_with_predictions(poses_true, poses_pred)
+        true_pos, pred_pos = matched[:, 1], matched[:, 2]
+        keep = (pred_pos != -1) & (np.abs(true_pos - pred_pos) <= allowed_distance)
+        biases.append(float(np.mean(pred_pos[keep] - true_pos[keep])) if keep.any()
+                      else float('nan'))
+    return biases
 
 
 def summarise(values):
@@ -153,13 +179,16 @@ def main():
                         row[f'{name}{key}_ci95'] = half
                 mean, half = summarise(oracle['Reconstruction_R2'])
                 row['Oracle_R2'], row['Oracle_R2_ci95'] = mean, half
+                mean, half = summarise(signed_onset_bias(y[:, 0], y_pred[:, 0]))
+                row['Onset_Bias'], row['Onset_Bias_ci95'] = mean, half
                 rows.append(row)
                 print(f"gen={eval_arm:10s} dec={train_arm:10s} snr={noise:>4} "
                       f"ovl={row['overlap']:8s} "
                       f"recon_R2={row['Reconstruction_R2']:.4f} "
                       f"oracle_R2={row['Oracle_R2']:.4f} "
                       f"onsetF1={row['Onset_F1']:.4f} "
-                      f"N/s={row['Number_of_submovements_per_second']:.3f}",
+                      f"N/s={row['Number_of_submovements_per_second']:.3f} "
+                      f"bias={row['Onset_Bias']:+.3f}",
                       flush=True)
 
     frame = pd.DataFrame(rows)
