@@ -20,3 +20,7 @@ wandb/
 
 # Executed notebooks (can be tens of MB of embedded figures)
 *_output.ipynb
+
+# Python bytecode
+__pycache__/
+*.py[cod]
