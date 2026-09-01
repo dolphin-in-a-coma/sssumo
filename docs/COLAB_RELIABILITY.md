@@ -1,8 +1,10 @@
 # Why Colab runs keep losing sessions, and what to do about it
 
 Diagnosis from the 2026-09-01 pulse-family study, which lost two of four runs' final
-checkpoints and spent ~90 minutes on infrastructure. Written to be actionable: the root
-cause is narrower than it looks and is fixable in the CLI.
+checkpoints and spent ~90 minutes on infrastructure. The root cause turned out to be
+narrower than it looked, and fixable in the CLI itself. Both fixes have since shipped —
+see **What shipped** below; the diagnosis is kept because the symptoms recur on any
+machine where the patch is not applied.
 
 ## Root cause: the CLI never refreshes its proxy token
 
@@ -58,63 +60,79 @@ completion-triggered download cannot win this race. Measured: a 5-minute poll on
 while an already-running VM continued fine. Not auth, not quota, not detectable in
 advance. Only routable around.
 
-## The plan
+## What shipped
 
-### A — host-side watcher (`scripts/colab/watch.py`)
+### A — host-side watcher: `scripts/colab/watch.py`
 
-Does not exist yet; was built ad hoc during the study. Requirements:
+Replaces the ad-hoc poll loop (and the old `checkpoint_puller.py`, now deleted).
 
-1. **Proactive re-mint** driven by the JWT `exp` — refresh at ~80% of lifetime instead of
-   recovering after a 404. Reuses `scripts/colab/remint.py`.
-2. **Poll under the reclaim window** (2–3 min, not 5+).
-3. **Pull every artifact not already held**, not just the newest — a cycle spanning two
-   epochs otherwise skips one permanently.
-4. **Immediate final pull** the moment the state file shows a return code.
-5. Catch `subprocess.TimeoutExpired`; never silence a failed `colab download` (stderr to
-   `/dev/null` plus `&&` turns a lost artifact into "nothing new").
+- **Proactive re-mint** from the token's own `exp`, at `--refresh-at` of its life
+  (default 0.8), rather than recovering after the first 404. The lifetime is *observed*
+  at mint time — the JWT carries no `iat`, so it cannot be derived from the token.
+- **Polls every 150 s** by default, under the reclaim window.
+- **Pulls every file whose local size differs from the remote's**, across any number of
+  `--remote-dir`/`--pattern` pairs. Size matching also rejects a checkpoint caught
+  mid-write: the partial is deleted, not counted as held.
+- **Final pull on the return code**, in the same cycle that detects it, then one more
+  listing pass; anything still missing is named in the log.
+- A failed download prints the size it got, the size it wanted, and the transport's own
+  error. `subprocess.TimeoutExpired` is caught and retried next cycle.
+- A re-mint that reports success without moving the token in the store we read is called
+  out as a probable `--config` mismatch — the failure that made recovery a silent no-op
+  for parallel runs.
 
-No credentials leave the machine. Fixes the token problem *and* the artifact race for any
-caller of this repo.
+Distinguishes the three failures that look alike: *token stale* (re-mint), *kernel busy*
+(retry next cycle — a good re-mint plus a failed listing means a live VM), and
+*assignment gone* (stop). Exercised against a stubbed CLI over all six paths.
 
-### B — fix the refresh in the CLI
+No credential leaves the machine.
 
-The real fix for the root cause: refresh the proxy token when `exp` is near, either in
-`runtime.py` before a request or by having the keep-alive daemon own it (it already runs
-on a timer per session and knows the endpoint). Removes re-minting from every caller.
-Ships as a local patch or an upstream PR to `google-colab-cli`; a local fork needs a
-re-apply check after `colab update`.
+### B — the refresh in the CLI: `scripts/colab/apply_cli_patch.py`
 
-Working re-mint, for reference — note `state.config_path` **must** be set before
-`state.store` is first touched, or the store binds the default path:
+`patches/0001-refresh-proxy-token.patch` gives the keep-alive daemon the refresh, since
+it already runs on a 60 s timer per session and knows the endpoint. Two files:
 
-```python
-# run with the CLI's own interpreter:
-#   /Users/evgeruda/.local/share/uv/tools/google-colab-cli/bin/python
-from colab_cli.common import state
-from colab_cli.state import SessionState
-state.config_path = "<same --config the run uses>"
-a = next(a for a in state.client.list_assignments() if a.endpoint == TARGET)
-pi = a.runtime_proxy_info                      # fresh token + url
-state.store.add(SessionState(name=NAME, token=pi.token, url=pi.url, endpoint=TARGET,
-                             variant=a.variant.name, accelerator=a.accelerator.name,
-                             kernel_id=None))  # None -> new kernel, same VM disk
-```
+- `state.py` gains `StateStore.update(name, **fields)` — read-modify-write under the
+  existing exclusive lock. `add()` replaces the whole record, so refreshing through it
+  would clobber a `kernel_id` an in-flight `exec` had just written.
+- `commands/session.py` refreshes when the token has under 15 minutes left, *before* the
+  keep-alive call: if keep-alive has started failing, a usable token is exactly what you
+  need to rescue artifacts in the time the VM has left. An unreadable token counts as
+  expired. A vanished assignment returns quietly — the keep-alive call is what reports a
+  lost VM.
 
-Always bind the endpoint recorded at creation. "The only live assignment" silently
-re-points a session name at a *different* run's VM once the intended one is gone.
+`apply_cli_patch.py` verifies sha256 against the version the patch was made for (0.6.0),
+backs the originals up inside the package, applies, re-checks the hashes, clears the
+bytecode, and then runs `patches/test_refresh.py` against a stubbed client — so
+"applied" means the refresh *behaves*, not just that the bytes landed. Any failure
+restores the originals. `--revert` undoes it; no arguments reports status and exits
+non-zero when the patch is absent, which is the check to run after a `colab update`.
 
-### C — push artifacts from inside the VM
+**The patch only covers sessions created after it is applied** — a running session keeps
+the daemon it was started with. This is why A is not redundant with B.
 
-Eliminates the reclaim race at the source rather than racing it, but needs a write
-credential on a rented VM. Constraints found:
+### C — VM-side push: not done, deliberately
 
-- `colab drivemount` and `colab auth` require a TTY and hang under an agent — not usable.
-- The OAuth token does carry a `drive.file` scope, so a Drive-API writer is *possible*,
-  but it means putting user credentials on rented hardware.
-- Prefer a narrowly-scoped, revocable, **write-only** destination (e.g. a single GCS
-  bucket via service account) over anything reusable.
+It would need a write credential on rented hardware, and A+B already cut the exposure to
+one ~150 s poll interval with the final pull triggered by the return code rather than by
+a timer. The credential-free ways to get the same guarantee are already available and
+are the better answer here:
 
-Only worth it for runs long enough that a 2–3 minute exposure window is unacceptable.
+- **Drive** — `drive:` source with `persist_to_drive: true` symlinks `weights/` and
+  `logs/` into Drive, so each checkpoint is durable as it is written. Needs one
+  interactive `colab drivemount` (it wants a TTY and hangs under an agent).
+- **Kaggle** — a batch kernel persists `/kaggle/working` on completion; there is no
+  reclaim window to lose.
+
+Revisit only if a run appears whose artifacts cannot tolerate a 150 s window, and then
+with a narrowly-scoped, revocable, write-only destination — never a reusable credential.
+
+### The one rule that survives all three
+
+Always bind recovery to **the endpoint recorded at creation**. "The only live assignment"
+silently re-points a session name at a *different* run's VM the moment the intended one
+is gone, and everything downstream — the listing, the pulls, the epoch numbers — then
+describes the wrong machine.
 
 ## Structural limits to plan around
 

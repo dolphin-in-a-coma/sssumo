@@ -15,7 +15,9 @@ this file records what is expensive to discover by reading the code.
 - `docs/VALIDATION.md` — the checkpoint reproduction study and its evidence.
 `docs/PULSE_FAMILIES.md` — the primitive-shape study: minimum jerk vs Gaussian,
 Beta and LGNB, and what a mismatched pulse costs. `docs/COLAB_RELIABILITY.md` —
-why Colab sessions die at the one-hour mark and the plan to fix it.
+why Colab sessions die at the one-hour mark, and the two fixes that shipped:
+`scripts/colab/watch.py` (host-side) and `scripts/colab/apply_cli_patch.py`
+(the CLI's own keep-alive daemon).
 
 `data/` is gitignored (~1.9 GB). Fetch it from the public archive the inference
 notebook uses; there is a `curl` one-liner in `scripts/colab/README.md`.
