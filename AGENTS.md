@@ -40,6 +40,12 @@ while its wandb run is `0423-ModGaussian_ampl`.
 object_moving 5, **pointing 2**. Any per-dataset statistic on those rests on very
 few clusters.
 
+**Participant IDs are only unique within a dataset.** Five IDs repeat across the
+seven organic datasets, so a global `groupby('Participant')` or
+`nunique('Participant')` silently merges distinct people — it reports 256 test
+participants as 251. Always group by `('Dataset', 'Participant')`, or scope the
+frame to one dataset first, as `score_checkpoints.py` does.
+
 **`--eval-datapoints` below ~32 can crash the evaluation.** `utils.py` fills NaNs
 in pooled statistics by sampling each column's non-NaN values; with few trials
 from an undertrained model a whole `next_*` column can be NaN and

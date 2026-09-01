@@ -415,11 +415,16 @@ degrees of freedom match the design.
 
 All organic numbers above used at most 128 trials per dataset × noise, which
 undercounted participants on the two large datasets. Re-run without the cap:
-**36 735 trials over 251 participants** per checkpoint, against 2 688 / 243 —
+**36 735 trials over 256 participants** per checkpoint, against 2 688 / 248 —
 the cap was discarding 93% of the data. Every dataset now matches its true
 test-split size (whacamole 181, tablet_writing 44, Fitts 10, steering 9, crank 5,
 object_moving 5, pointing 2) and the participant set is identical across noise
-levels. Tables in `docs/organic_uncapped_tables.csv` and
+levels.
+
+(Earlier drafts said 251 and 243. Those came from a global
+`nunique(Participant)`; participant IDs repeat across datasets, so five distinct
+people were collapsed. Only the headline counts were affected — every
+participant statistic is computed inside a `(Dataset, Noise_Condition)` group.) Tables in `docs/organic_uncapped_tables.csv` and
 `docs/organic_uncapped_paired.csv`.
 
 The extra trials tighten each per-participant mean, so more differences reach
@@ -443,6 +448,50 @@ modestly worse on noisy crank.
 Among fine-tuned checkpoints only `ft_A` shows a crank deficit that survives
 (−0.060 at SNR 10, p = 0.0001); the other three are within noise, and two are
 slightly *better* than the released checkpoint at SNR ∞.
+
+## Per-participant bands and the dataset envelope
+
+Everything above frames uncertainty as inference about a population. For the
+article's performance claim we do not need that, and with 2–10 test participants
+per dataset we could not support it anyway. The claim we can support is
+conditional: *every participant we tested lands in this range, accounting for
+noise in each participant's own estimate.*
+
+Constructed in two levels, by `scripts/analysis/participant_bands.py`:
+
+- **Per participant** — resample that participant's own trials (2 000 draws),
+  take the 2.5/97.5 percentiles. Each participant gets an estimate and a band.
+- **Dataset aggregate** — the **envelope** `[min_i L_i, max_i U_i]`: the lowest
+  lower bound and the highest upper bound over participants.
+
+No participant is resampled, so nothing here is a population statement. Released
+fine-tuned checkpoint, reconstruction R², noiseless:
+
+| Dataset | n | Median | IQR | Envelope | Width |
+|---|---|---|---|---|---|
+| pointing | 2 | 0.983 | 0.982–0.984 | 0.979–0.987 | 0.008 |
+| crank | 5 | 0.890 | 0.881–0.890 | 0.867–0.901 | 0.034 |
+| object_moving | 5 | 0.971 | 0.969–0.974 | 0.958–0.978 | 0.021 |
+| steering | 9 | 0.971 | 0.969–0.976 | 0.963–0.982 | 0.019 |
+| Fitts | 10 | 0.885 | 0.871–0.908 | 0.787–0.949 | 0.162 |
+| tablet_writing | 44 | 0.867 | 0.850–0.880 | 0.766–0.942 | 0.176 |
+| whacamole | 181 | 0.959 | 0.922–0.970 | 0.619–0.988 | 0.369 |
+
+**The envelope widens with participant count** — it is a max/min statistic, and
+across these datasets its width tracks n at r = 0.92. Whacamole's 0.369 against
+pointing's 0.008 is mostly 181 participants against 2, not a reliability
+difference. Report the IQR alongside it whenever datasets of different size are
+compared.
+
+An equal-weight **mixture** of the participants' bootstrap draws is computed too,
+as the narrower alternative. It is not the headline number: with five
+participants its 2.5th percentile sits 0.025 × 5 = 0.125 participant-equivalents
+into the tail, i.e. inside the lowest participant's own trial noise, so each
+endpoint describes one participant rather than the dataset.
+
+Figure: `docs/participant_bands.html` (caterpillar per dataset, every checkpoint
+× metric × noise). Data: `docs/organic_participant_bands.csv` (18 432 rows, one
+per participant × cell) and `docs/organic_envelope.csv`.
 
 ## Reproducing this
 
