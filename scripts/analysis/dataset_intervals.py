@@ -22,11 +22,25 @@ Two estimands are reported because they answer different questions:
                         once, which is usually the fairer summary of "how well
                         does this work on these people".
 
+The same rule, moved up one rung, gives the population interval instead:
+resample **participants**, keeping each drawn participant's trials intact. Not
+participants *and* trials within them -- each participant's observed mean already
+carries their trial noise, so resampling inside a drawn participant double-counts
+it exactly as a sample-level resample would one level down. One level, always.
+
+  conditional  resample trials within participant   participants fixed
+  population   resample participants, trials whole  generalises over people
+
+The population interval is only meaningful with enough participants. Below about
+20 clusters the percentile cluster bootstrap is anti-conservative, so the
+participant-level t interval is reported alongside it -- its degrees of freedom
+are honest at any n, and it is the one to quote when clusters are few.
+
 Degenerate case: where a dataset has one trial per participant, participants and
 trials are the same unit, stratified resampling returns the identical set every
 time, and no conditional interval exists. Those datasets are resampled
 unstratified and flagged -- their interval necessarily includes participant
-variation.
+variation. Their *population* interval is unaffected and remains valid.
 
 No GPU: reads the uncapped per-trial dumps from
 `scripts/colab/score_checkpoints.py --dump-per-trial`.
@@ -37,6 +51,7 @@ import os
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 B = 10000
 CHUNK = 500                       # bootstrap draws held in memory at once
@@ -51,6 +66,36 @@ def _draw(bounds, n_total, size, rng):
     out = np.empty((size, n_total), dtype=np.int64)
     for start, end in bounds:
         out[:, start:end] = rng.integers(start, end, (size, end - start))
+    return out
+
+
+def population_intervals(sizes, means, rng):
+    """Resample participants, each carrying all of their trials.
+
+    Only (n_p, mean_p) per participant is needed: the trial-weighted mean over a
+    drawn multiset of participants is sum(n_p * m_p) / sum(n_p), so the trials
+    themselves never have to be touched.
+    """
+    n = len(sizes)
+    out = {}
+    if n >= 2:
+        m = means.mean()
+        sd = means.std(ddof=1)
+        half = stats.t.ppf(0.975, n - 1) * sd / np.sqrt(n)
+        out.update(t_est=float(m), t_lo=float(m - half), t_hi=float(m + half))
+    else:
+        out.update(t_est=float(means.mean()), t_lo=np.nan, t_hi=np.nan)
+
+    idx = rng.integers(0, n, (B, n))
+    w = sizes[idx]
+    tw = (w * means[idx]).sum(1) / w.sum(1)
+    pb = means[idx].mean(1)
+    out.update(
+        clu_trial_lo=float(np.percentile(tw, 2.5)),
+        clu_trial_hi=float(np.percentile(tw, 97.5)),
+        clu_bal_lo=float(np.percentile(pb, 2.5)),
+        clu_bal_hi=float(np.percentile(pb, 97.5)),
+        cluster_reliable=bool(n >= 20))
     return out
 
 
@@ -91,8 +136,12 @@ def stratified_interval(values, participant, rng, stratify=True):
     tw = np.concatenate(tw)
     pb = np.concatenate(pb)
 
+    part_bounds = list(zip(starts, ends))
+    sizes_all = np.array([e - s for s, e in part_bounds])
+    means_all = np.array([values[s:e].mean() for s, e in part_bounds])
     per_part = np.array([values[s:e].mean() for s, e in
                          (blocks if blocks is not None else bounds)])
+    pop = population_intervals(sizes_all, means_all, rng)
     return dict(
         n_trials=n_total, n_participants=len(sizes),
         min_trials=int(sizes.min()), max_trials=int(sizes.max()),
@@ -103,7 +152,8 @@ def stratified_interval(values, participant, rng, stratify=True):
         hi_balanced=float(np.percentile(pb, 97.5)),
         stratified=not degenerate and stratify,
         note="trials = participants; interval includes participant variation"
-             if degenerate else "")
+             if degenerate else "",
+        **pop)
 
 
 def main(dump_dir, out_path):

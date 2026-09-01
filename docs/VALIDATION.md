@@ -456,11 +456,13 @@ performance claim does not need that, and with 2–10 test participants per data
 could not support it. The claim we can support is: *this is how well the method works
 on our data, and this is how sure we are of that number.*
 
-One decision produces the whole procedure. **Resample trials, stratified by
-participant.** Stratification holds the participant composition fixed, which is what
-makes the interval a statement about our data rather than about people we did not test.
+One decision produces the whole procedure. **Resample exactly one level: the coarsest
+you mean to generalise over.** For the conditional claim that level is the trial,
+stratified by participant — stratification holds the participant composition fixed,
+which is what makes the interval a statement about our data rather than about people we
+did not test.
 
-Nothing coarser is resampled — that would be the population claim. **Nothing finer needs
+Nothing coarser is resampled for that claim — that would be the population claim. **Nothing finer needs
 to be**, and this is the part that is easy to get wrong: each trial's observed metric is
 already a noisy realisation, so the spread across trials carries the within-trial noise
 with it. Adding a sample- or chunk-level bootstrap on top double-counts it. Simulated at
@@ -496,6 +498,41 @@ mean over all trials and matches the pooled figure the article already reports;
 **participant-balanced** is the mean of the participant means, so a participant with 572
 trials does not outweigh one with 5. They differ materially only on Fitts (0.887 against
 0.883); use trial-weighted for consistency with the existing numbers.
+
+### The same rule one rung up: population intervals
+
+Moving the resampled level from the trial to the participant turns the conditional
+interval into a population one. **Resample participants, each carrying their trials
+intact** — not participants *and* trials within them. A participant's observed mean
+already contains their trial noise, so resampling inside a drawn participant
+double-counts it exactly as a sample-level resample would one level down. One level,
+always.
+
+| Dataset | n | Conditional (trials) | Population, participant t | Population, cluster bootstrap |
+|---|---|---|---|---|
+| pointing | 2 | 0.983 [0.981, 0.984] | 0.983 [0.960, 1.006] | [0.981, 0.985] † |
+| crank | 5 | 0.887 [0.881, 0.891] | 0.887 [0.880, 0.893] | [0.882, 0.891] † |
+| object_moving | 5 | 0.971 [0.969, 0.973] | 0.971 [0.966, 0.976] | [0.968, 0.974] † |
+| steering | 9 | 0.973 [0.972, 0.973] | 0.973 [0.968, 0.977] | [0.969, 0.976] † |
+| Fitts | 10 | 0.887 [0.884, 0.889] | 0.883 [0.854, 0.911] | [0.862, 0.908] † |
+| tablet_writing | 44 | 0.864 [0.862, 0.866] | 0.864 [0.854, 0.874] | [0.854, 0.872] |
+| whacamole | 181 | 0.929 [0.919, 0.939] | 0.929 [0.919, 0.940] | [0.918, 0.939] |
+
+Three checks say the machinery is behaving:
+
+- **whacamole's two intervals are identical** (both 0.021 wide). Forced: with one trial
+  per participant the two questions are the same question.
+- **Cluster bootstrap agrees with the t interval exactly where it should** — at n = 44
+  and n = 181 the two differ in the third decimal.
+- **And fails exactly where it should.** † marks n < 20, where the percentile cluster
+  bootstrap is anti-conservative: at n = 2 it returns an interval 0.004 wide against the
+  t interval's 0.046, because two clusters admit only three distinct resamples. Quote
+  the t interval below n ≈ 20; its degrees of freedom stay honest at any n.
+
+So the population claim is available on **tablet_writing and whacamole**, defensible but
+thin on Fitts and steering, and not supportable on crank, object_moving or pointing —
+where pointing's t interval runs to 1.006, past the ceiling R² can reach, which is the
+arithmetic saying the same thing.
 
 ### The same procedure at participant scope
 

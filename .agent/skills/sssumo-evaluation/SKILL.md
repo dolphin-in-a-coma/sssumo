@@ -52,6 +52,10 @@ composition is held fixed. `scripts/analysis/dataset_intervals.py`. The interval
 is much narrower than the participant-t one, and that is correct — it excludes
 participant variation on purpose, because we are not generalising over people.
 
+Both come from `scripts/analysis/dataset_intervals.py` in one pass; it emits the
+conditional interval, the participant t interval and the cluster bootstrap per
+dataset, with `cluster_reliable` flagging n >= 20.
+
 ## Resample exactly one level: the coarsest you generalise over
 
 Everything finer is already in the observed spread. Each trial's metric is itself
@@ -63,6 +67,18 @@ level inflates it by 1.201 against a predicted double-count factor of 1.214.
 
 This is why no per-sample dump is needed, and why chunking trials to get "finer"
 error bars is wasted GPU time.
+
+The same trap sits one rung up: for a population interval resample participants
+**carrying their trials whole**, never participants *and* trials within them. A
+participant's observed mean already contains their trial noise.
+
+Sanity checks that catch a broken implementation:
+
+- whacamole's conditional and population intervals must come out **identical** --
+  with one trial per participant the two questions coincide.
+- cluster bootstrap and participant t must **agree** at n = 44 and n = 181, and
+  **diverge** below n ~ 20 (at n = 2 the cluster interval is ~11x too narrow,
+  because two clusters admit only three distinct resamples).
 
 Check any new implementation against the closed-form stratified SE,
 `sqrt(Σ_p (n_p/n)² · s_p²/n_p)` — they should agree to a percent or two.
