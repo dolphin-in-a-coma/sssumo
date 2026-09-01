@@ -83,7 +83,7 @@ def status(pkg):
 
 
 def backup_dir(pkg):
-    return os.path.join(pkg, ".sssumo-patch-backup")
+    return os.path.join(pkg, ".colab-cli-patch-backup")
 
 
 def apply(pkg, py, force):
