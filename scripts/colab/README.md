@@ -100,6 +100,7 @@ route to Kaggle rather than retrying, see `docs/COLAB_RELIABILITY.md`.
 
 | symptom | it is | do |
 |---|---|---|
+| `upload` fails instantly with `SSLEOFError` | the file exceeds ~75 MiB | split it (`split -b 64m`) or send the pieces separately -- retrying never works |
 | `exec` 404s, `colab sessions` still lists the endpoint | token expired, VM fine | the watcher re-mints; by hand, `<cli-python> scripts/colab/remint.py $SESSION $ENDPOINT` |
 | the endpoint is gone from `colab sessions` | VM reclaimed | new session, `"resume": true` in run.local.json |
 | watcher logs `WARNING: re-mint succeeded but ... no fresh token` | `--config` mismatch | pass the run's own `--config` to `watch.py` |

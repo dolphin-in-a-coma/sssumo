@@ -168,6 +168,15 @@ describes the wrong machine.
 
 ## Structural limits to plan around
 
+- **`colab upload` refuses anything from 75 MiB up**, with
+  `SSLError(SSLEOFError(8, 'EOF occurred in violation of protocol'))` -- an error that
+  reads as a network blip and is not one. Bisected against a live session: 78,643,000
+  bytes uploads, 78,643,200 (exactly 75 MiB) does not. An oversized upload fails in 1-2
+  seconds, *before* transferring, where a real transient failure dies part-way through
+  after a size-proportional delay; that timing tells them apart. Split at 64 MiB, or send
+  the pieces individually as the epoch-20/22/24 matrix run did with its twelve
+  checkpoints.
+
 - L4 capped at **2 concurrent**; a third returns `Precondition Failed`.
 - T4s reclaimed at ~1–1.5 h mid-run; L4s survive multi-hour jobs. Checkpoint every epoch
   and always pass `--resume` so a reclaim costs one epoch.
