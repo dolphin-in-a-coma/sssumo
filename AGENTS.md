@@ -70,6 +70,16 @@ GPU-matched build with a generic wheel and produces `CUDA error: no kernel image
 available for execution on the device`. On such a host, stub it onto `PYTHONPATH`
 rather than installing it.
 
+**Checkpoints come in two formats.** Everything written before
+`sssumo/checkpoint.py` — the released `config-0423-ModGaussian_ampl_24.pth`
+included — is a bare `model.state_dict()`. New ones are a dict carrying the
+optimiser, the scheduler and the reconstructor's primitive alongside the weights,
+because none of those live on the detector and a resume used to silently reset
+Adam and discard a learned shape. Read either with
+`sssumo.checkpoint.load_model_state`; the scripts already do. **The two notebooks
+still call `torch.load` directly**, which is fine for the released checkpoint but
+will hand a format-2 dict to `load_state_dict` if pointed at a new one.
+
 **Metrics come back as tensors still on the device.** `calculate_supervised_metrics`
 computes the submovement counts from the mask, so they are CUDA tensors, and numpy
 refuses to convert those. Anything that aggregates metric output must move to CPU

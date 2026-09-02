@@ -37,6 +37,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import torch  # noqa: E402
 
+from sssumo.checkpoint import load_model_state  # noqa: E402
 from sssumo.data import SyntheticDataset  # noqa: E402
 from sssumo.models import TDNNDetector  # noqa: E402
 from sssumo.models import STEBinarizer  # noqa: E402
@@ -71,7 +72,7 @@ def load_model(config, arm, root_dir, epoch):
         kernel_sizes=config.kernel_sizes, num_layers=config.num_layers,
         dropout_rate=config.dropout_rate,
     ).to(config.device, config.dtype)
-    model.load_state_dict(torch.load(weights, map_location=config.device))
+    model.load_state_dict(load_model_state(weights, map_location=config.device))
     model.eval()
     return model
 

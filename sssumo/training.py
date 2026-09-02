@@ -28,6 +28,7 @@ from torch.utils import data
 
 import wandb
 
+from .checkpoint import load_checkpoint, restore_training_state, save_checkpoint
 from .data import SyntheticDataset, CombinedSyntheticDataset
 from .models import TDNNDetector
 from .utils import (
@@ -64,10 +65,16 @@ def default_dataset_paths(config):
 
 
 def resolve_start_epoch(config, model):
-    """Load starting weights per config.start_with_weights, return the epoch reached."""
+    """Load starting weights per config.start_with_weights.
+
+    Returns `(epoch_reached, checkpoint)`, where the checkpoint is the loaded
+    payload so the caller can restore optimiser, scheduler and shape state once
+    those objects exist -- they are built after this runs. It is None when nothing
+    was loaded, and carries only `model` for a pre-format-2 checkpoint.
+    """
     latest_epoch = -1
     if not config.start_with_weights or config.start_with_weights == 'Xavier':
-        return latest_epoch
+        return latest_epoch, None
 
     weights_dir = os.path.dirname(config.weights_file)
     weights_file = None
@@ -88,11 +95,12 @@ def resolve_start_epoch(config, model):
 
     if weights_file is None:
         print('No weights file found, starting from scratch', flush=True)
-        return latest_epoch
+        return latest_epoch, None
 
-    model.load_state_dict(torch.load(weights_file, map_location=config.device))
+    checkpoint = load_checkpoint(weights_file, map_location=config.device)
+    model.load_state_dict(checkpoint['model'])
     print(f'Loaded weights from {weights_file}, continuing from epoch {latest_epoch}', flush=True)
-    return latest_epoch
+    return latest_epoch, checkpoint
 
 
 def build_organic_statistics_dataset(config, dataset2path, dataset2stats_path, basic_dataset,
@@ -179,7 +187,7 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
     ).to(config.device, config.dtype)
     model.eval()
 
-    latest_epoch = resolve_start_epoch(config, model)
+    latest_epoch, checkpoint = resolve_start_epoch(config, model)
 
     criterion_entropy = nn.BCELoss()
     criterion_entropy_wo_reduction = nn.BCELoss(reduction='none')
@@ -225,6 +233,15 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
     step_decay = config.lr_decay_total_change ** (
         1 / ((scheduler_end - scheduler_start) * len(dataloader)))
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=step_decay)
+
+    if checkpoint is not None:
+        restored = restore_training_state(
+            checkpoint, optimizer=optimizer, scheduler=scheduler,
+            primitive=getattr(reconstructor, 'primitive', None))
+        # Say this in the log, not just on stdout: a resume that reset the optimiser
+        # is invisible afterwards otherwise, and it makes runs incomparable.
+        carried = ', '.join(restored) if restored else 'model weights only (pre-format-2)'
+        log(f'Resumed from epoch {latest_epoch}, restored: {carried}', config.log_file)
 
     model.train()
     if config.start_with_weights == 'Xavier':
@@ -463,7 +480,9 @@ def train(config, dataset2path=None, organic_eval_every=5, synthetic_eval_every=
                       step=len(dataloader) * (epoch + 1))
 
         checkpoint_path = config.weights_file.replace('.pth', f'_{epoch}.pth')
-        torch.save(model.state_dict(), checkpoint_path)
+        save_checkpoint(checkpoint_path, model, epoch, optimizer=optimizer,
+                        scheduler=scheduler,
+                        primitive=getattr(reconstructor, 'primitive', None))
 
         shape_report = ''
         if shape_parameters:

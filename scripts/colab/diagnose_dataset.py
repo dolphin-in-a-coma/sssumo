@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
+from sssumo.checkpoint import load_model_state  # noqa: E402
 from sssumo.data import OrganicDataset  # noqa: E402
 from sssumo.models import TDNNDetector  # noqa: E402
 from sssumo.training import DATASET_FILES  # noqa: E402
@@ -51,7 +52,7 @@ def load(path, config):
         channels=config.channels, kernel_sizes=config.kernel_sizes,
         num_layers=config.num_layers, dropout_rate=config.dropout_rate,
     ).to(config.device, config.dtype)
-    model.load_state_dict(torch.load(path, map_location=config.device))
+    model.load_state_dict(load_model_state(path, map_location=config.device))
     model.eval()
     return model
 
