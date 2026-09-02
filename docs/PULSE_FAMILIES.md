@@ -2,11 +2,21 @@
 
 SSSUMO renders every submovement with one fixed velocity pulse. This records what
 happens when that pulse is swapped for three alternatives, and what a wrong choice
-costs. Source pinned at `313f3ac` (analysis) on branch `feat/primitive-families`.
+costs. Source pinned at `313f3ac` (analysis) on branch `feat/primitive-families`;
+the epoch-20/22/24 matrices come from four continuous 25-epoch reruns at `f80eb17`.
 
-**Conclusion: reconstruction quality is nearly blind to the assumed pulse family, and
-ranks the wrong one first.** Minimum jerk is not indicted as a *fit* — it is indicted
-as something a fit metric can confirm.
+**Conclusion: reconstruction quality is nearly blind to the assumed pulse family, so it
+cannot be used to choose one.** Minimum jerk is not indicted as a *fit* — it is
+indicted as something a fit metric cannot confirm. Detection separates the families
+cleanly at every training depth measured, and the penalty for assuming the wrong pulse
+*grows* with training.
+
+> **Revised 2026-09-02.** An earlier version of this document claimed fit quality ranks
+> the wrong family *first*. That held at epoch 12 but does not survive to the recipe's
+> own endpoint — see Result 2. Every number below now comes from four arms trained
+> continuously to epoch 24 in a single process each; the epoch-12 matrix that produced
+> the original claim came from runs resumed at different points, with the optimiser
+> state reset each time.
 
 ## The manipulation
 
@@ -49,6 +59,17 @@ The split is by **symmetry class**. Within-class spread is 0.5% (symmetric) and 
 (asymmetric) of detection loss; the between-class gap is 36% — an order of magnitude
 larger, which is what makes n=1 per arm tolerable here.
 
+The continuous reruns reproduce this at epoch 12 (detection loss 0.504 / 0.511
+symmetric, 0.327 / 0.340 asymmetric) and it persists at epoch 20, where every arm has
+improved but the classes stay separated by 39%:
+
+| arm | detection loss | onset dist | precision |
+|---|---|---|---|
+| min-jerk | 0.3939 | 0.817 | 0.879 |
+| Gaussian | 0.4000 | 0.807 | 0.903 |
+| Beta-asym | 0.2412 | 0.409 | 0.905 |
+| LGNB | 0.2484 | 0.427 | 0.923 |
+
 Two distinct mechanisms, separable only because the design varies symmetry and width
 independently:
 
@@ -58,40 +79,76 @@ independently:
 - **Duration estimation improves with narrowness** — duration loss orders LGNB <
   Gaussian < Beta-asym < min-jerk, tracking sd, not symmetry.
 
-## Result 2 — fit quality ranks the wrong family first
+## Result 2 — fit quality cannot tell the families apart
 
-144 cells: 4 decoders × 4 generators × 9 noise/overlap conditions, 256 trials of 1000
-samples. Median CI95 half-widths: R² ±0.0021, onset F1 ±0.0062, duration R² ±0.0136.
+144 cells: 4 decoders x 4 generators x 9 noise/overlap conditions, 256 trials of 1000
+samples, repeated at epochs 20, 22 and 24. Median CI95 half-widths: R2 +/-0.0021, onset
+F1 +/-0.0062, duration R2 +/-0.0136.
 
-On Gaussian-generated data:
+**Does reconstruction R2 rank the true family first?** Per generator column, the decoder
+with the highest R2 should be the matched one:
 
-| decoder | recon R² | rank | onset F1 | rank | submov/s (true 2.66) |
+| epoch | columns misranked | margin of each wrong call |
+|---|---|---|
+| 12 *(superseded)* | **3 / 4** | gaussian by 0.0133; lgnb by 0.0204; minjerk by 0.0057 |
+| 20 | 1 / 4 | gaussian by **0.0010** |
+| 22 | **0 / 4** | none |
+| 24 | 1 / 4 | minjerk by **0.0031** |
+
+At epoch 12 the misranking was systematic and the margins were several times the CI. At
+the recipe's own depth it is at most one column, a *different* one at each epoch, by
+0.001-0.003 — margins at or below the CI half-width. **A ranking that changes which
+column it applies to between adjacent epochs, by a thousandth of an R2, is a tie, not a
+finding.**
+
+What survives is the weaker and more useful claim: across the four decoders,
+reconstruction R2 varies by 0.045 relative (Result 4) — a mismatched decoder on
+Gaussian data still scores 0.966-0.977 against the matched 0.976. The metric's dynamic
+range across families is too small to discriminate them in either direction, which is
+exactly what Result 3 predicts from shape alone.
+
+Detection is the opposite. Onset F1 ranks the true family first in **4 of 4 columns at
+every epoch measured (12, 20, 22, 24)**, and the gap widens with training:
+
+| epoch | matched mean F1 | mismatched mean | cost of mismatch |
+|---|---|---|---|
+| 12 | 0.8865 | 0.6905 | 0.196 |
+| 20 | 0.8779 | 0.6667 | 0.211 |
+| 22 | 0.8776 | 0.6565 | 0.221 |
+| 24 | 0.8692 | 0.6450 | 0.224 |
+
+On Gaussian-generated data at epoch 20 the dissociation is visible in one column:
+
+| decoder | recon R2 | rank | onset F1 | rank | submov/s (true 2.66) |
 |---|---|---|---|---|---|
-| **Gaussian (correct)** | 0.8577 | 3rd | **0.8796** | 1st | 2.46 |
-| min-jerk | **0.8710** | 1st | 0.7068 | 2nd | 3.23 |
-| Beta-asym | 0.8658 | 2nd | **0.5423** | 4th | 3.86 |
-| LGNB | 0.8371 | 4th | 0.6147 | 3rd | 3.74 |
+| **Gaussian (correct)** | 0.9764 | 2nd | **0.8644** | 1st | 3.05 |
+| min-jerk | **0.9774** | 1st | 0.6566 | 2nd | 3.94 |
+| Beta-asym | 0.9755 | 3rd | 0.5348 | 4th | 4.66 |
+| LGNB | 0.9659 | 4th | 0.5788 | 3rd | 4.48 |
 
-The correct family places **3rd of 4 on fit and 1st on recovery**; fit's second choice
-is the worst recoverer and inflates counts 45%. The wrong decoder's 0.013 R² advantage
-is ~6× the CI, so the ordering is real. Across the 12 off-diagonal cells, **4** show a
-mismatched decoder scoring higher R² than the matched one; **all 12** recover worse.
+All four decoders sit within 0.012 R2 of each other while their onset F1 spans 0.33.
+Fit ranks the correct family 2nd by one thousandth; recovery ranks it 1st by 0.21.
 
-Mismatch penalty against each cell's own matched diagonal (worst first):
+Mismatch penalty against each cell's own matched diagonal, epoch 20 (worst first):
 
-| decoder | data | Δ recon R² | Δ onset F1 | count ratio |
+| decoder | data | Δ recon R2 | Δ onset F1 | count ratio |
 |---|---|---|---|---|
-| Gaussian | Beta-asym | −0.123 | −0.412 | 1.10 |
-| Beta-asym | Gaussian | **+0.008** | −0.337 | 1.57 |
-| Gaussian | LGNB | −0.091 | −0.332 | 1.17 |
-| LGNB | Gaussian | −0.021 | −0.265 | 1.52 |
-| Gaussian | min-jerk | −0.064 | −0.241 | 1.13 |
-| min-jerk | Gaussian | **+0.013** | −0.173 | 1.31 |
+| Gaussian | Beta-asym | −0.067 | −0.368 | 1.42 |
+| Beta-asym | Gaussian | −0.001 | −0.330 | 1.53 |
+| Gaussian | LGNB | −0.060 | −0.311 | 1.51 |
+| LGNB | Gaussian | −0.011 | −0.286 | 1.47 |
+| Gaussian | min-jerk | −0.035 | −0.255 | 1.38 |
+| min-jerk | Gaussian | **+0.001** | −0.208 | 1.29 |
+
+Across the 12 off-diagonal cells, **1** shows a mismatched decoder scoring higher R2
+than the matched one (it was 4 at epoch 12); **all 12** recover worse, and every one
+inflates the submovement count — by 24% to 53% except within the skew-matched pair,
+where the two asymmetric families are near-interchangeable (count ratio 0.98-1.05).
 
 ## Result 3 — the ceiling from shape alone
 
 Decoder renders the *true* labels with its own family; no detector, no estimation error.
-Model-free, and it reproduces inside the full matrix to 3 decimals.
+Model-free, and it reproduces inside the full matrix to 3 decimals — including across the epoch-20/22/24 reruns, which is the check that the two studies measure the same thing.
 
 | decoder \ data | min-jerk | Gaussian | Beta-asym | LGNB |
 |---|---|---|---|---|
@@ -123,15 +180,23 @@ For SSSUMO's reported statistics: **counts are reasonably safe; timing and ampli
 not.** A cross-family sensitivity check belongs beside any per-dataset claim about
 duration, amplitude or onset timing.
 
+The *ordering* re-verified at epoch 20 unchanged — reconstruction R² most stable at 0.045
+relative, onset distance most sensitive — so this result does not depend on training
+depth. The magnitudes above are the epoch-12 normalisation and are not directly
+comparable to a recomputation over the new matrices.
+
 ## Result 5 — clean data punishes the wrong basis hardest
 
 Mismatch penalty (matched − mismatched onset F1):
 
 | SNR \ overlap | 0.0–0.5 | 0.5–1.0 | 1.0–1.5 |
 |---|---|---|---|
-| ∞ | 0.154 | **0.294** | 0.270 |
-| 20 | 0.105 | 0.242 | 0.218 |
-| 10 | **0.056** | 0.205 | 0.218 |
+| ∞ | 0.160 | 0.354 | **0.363** |
+| 20 | 0.096 | 0.259 | 0.259 |
+| 10 | **0.041** | 0.177 | 0.193 |
+
+*(epoch 20. The epoch-12 matrix gives the same pattern one step weaker: 0.154 / 0.294 /
+0.270 at SNR ∞, 0.056 / 0.205 / 0.218 at SNR 10.)*
 
 Noise does not reveal misspecification, it masks it — everything degrades toward the
 same poor performance. Basis choice matters most where recordings are best. Overlap
@@ -141,47 +206,74 @@ detector.
 
 ## Limits
 
-- **Epoch 12, not 24.** Colab reclaimed three VMs mid-study; epoch 12 was the deepest
-  checkpoint held for all four arms. Conclusions reproduce at epoch 2 (a separate
-  complete 144-cell matrix), at epoch 12, and in the model-free oracle, so they are not
-  an artefact of training depth — but absolute numbers would shift.
+- **Training depth: resolved, and it cost one result.** The original study ran to epoch
+  12 because Colab reclaimed three VMs mid-run. Four arms have since been retrained
+  continuously to epoch 24 — one process each, zero optimiser resets — and the matrix
+  recomputed at epochs 20, 22 and 24. Result 2's *direction* did not survive (see
+  above); Results 1, 3, 4 and 5 did, the last two strengthening. Absolute numbers do
+  shift: matched reconstruction R² rises from ~0.88 to ~0.98.
+- **Epoch 24 is not convergence.** `lr_decay_start: 30` sits outside the 25-epoch
+  budget *and* `lr_decay_total_change: 1` makes the scheduler a no-op even in range, so
+  the learning rate is constant throughout — this is the released pretraining recipe,
+  not a misconfiguration. Detection precision peaks at epoch 20, where
+  `bn_dropout_freeze_start` fires, and declines monotonically after; onset F1 falls
+  0.0185 on average across the 144 cells from epoch 20 to 24. Report epoch 20 and treat
+  22/24 as the stability evidence. The conclusions are epoch-robust; the absolute
+  numbers are not.
 - **Shape is frozen and uniform.** Nothing is predicted per submovement, so this
   measures uniform mis-specification, not within-trial shape heterogeneity.
 - **One run per arm**, unseeded weight init. The two-arms-per-class design bounds the
-  nuisance at ~1/10 of the effect; formal replicates are not in.
+  nuisance at ~1/10 of the effect; formal replicates are not in. For scale, the minjerk
+  arm differs from the released checkpoint by ~0.007 onset F1 — but differs *from
+  itself* by 0.035 precision between epochs 22 and 24, so with a constant learning rate
+  the choice of stopping epoch matters several times more than run-to-run variation.
 - **Synthetic only.** Recovery is only measurable where ground truth exists.
 
 ## What is still open
 
-Three arms were in flight on Kaggle when this was written; each answers a question the
-epoch-12 matrix could not.
+The three arms that were in flight when this was first written have all landed.
 
-| kernel | what it settles |
-|---|---|
-| `dolphininacoma/sssumo-ep22-beta-asym` | takes `beta_asym` 12 → 22, giving an **epoch-22 matrix for all four arms** and retiring the depth caveat above |
-| `dolphininacoma/sssumo-learn-beta` | with the generator pinned to a known asymmetric truth and the decoder starting from the standard assumption, **does training move the shape toward the truth?** |
-| `sssumo-learn-lgnb` | the same recovery test in the other family. **Never pushed** — Kaggle caps GPU kernels at 2 concurrent, and both slots were taken |
-
-Collect a finished one with `kaggle kernels output dolphininacoma/<slug> -p
-runs/0901-pulse-families/weights`; check with `kaggle kernels status`. The learned-shape
-arms log their shape parameters per epoch, so the answer is in the training log as well
-as the checkpoint.
+- **`sssumo-ep22-beta-asym`** — completed the epoch-22 matrix; superseded by the full
+  epoch-20/22/24 reruns.
+- **`sssumo-learn-beta`** — **the shape is recoverable.** With the generator pinned to
+  Beta(2.4, 3.6) and frozen, and the decoder starting from the symmetric minimum-jerk
+  assumption, training moved `beta_mean` 0.500 → 0.403 against a truth of 0.400,
+  closing 97% of the gap; the mode moved 0.500 → 0.352 against a truth of 0.350. Both
+  duration slopes stayed at ~0, correctly. `beta_precision` started *at* the truth
+  (6.0) and drifted 3.7% low, so one parameter was recovered and one slightly degraded.
+  The shape sat frozen for epochs 0–4 and converged within a single epoch of epoch 5,
+  which is `reconstruction_loss_start` — the reconstruction loss is the only gradient
+  path to the primitive.
+- **`sssumo-learn-lgnb`** — the same recovery test in the other family. **Still not
+  run.** One family recovering its own shape is an anecdote.
 
 Beyond those:
 
-- **Replicates.** One run per arm. The two-arms-per-class design bounds the nuisance at
-  ~1/10 of the effect, but a formal replicate needs `--seed-offset` — `config.seed` does
-  not change the training data.
-- **Per-submovement shape.** The detector emits `[onset, amplitude, duration]` only, so a
-  run's pulses all share one shape. Adding shape channels collides with the dead
-  `shape[1] == 4` reconstruction-mask path in `models.py` and `training.py`; that has to
-  go first.
+- **Replicates.** Still one run per arm; `--seed-offset` is the lever, since
+  `config.seed` does not change the training data.
+- **Per-submovement shape.** The detector emits `[onset, amplitude, duration]` only, so
+  a run's pulses all share one shape. Adding shape channels collides with the dead
+  `shape[1] == 4` reconstruction-mask path in `models.py` and `training.py`.
 - **Organic data.** Recovery is only measurable against ground truth, so every result
-  here is synthetic. What a mis-specified basis costs on real movement is unmeasured.
+  here is synthetic.
+- **A learned-shape checkpoint cannot reproduce itself.** `torch.save` stored only
+  `model.state_dict()`, and the primitive lives on the reconstructor — so the recovered
+  shape survived only in the training log. Fixed in `a5d8169` (format-2 checkpoints
+  carry optimiser, scheduler and primitive), but the `beta_learned` checkpoints predate
+  it and need their shape read out of `train_log_beta_learned.txt`.
 
 ## Where the artefacts are
 
-`runs/0901-pulse-families/` (gitignored, on this machine):
+**`runs/0902-family-rerun/`** — the continuous 25-epoch reruns (gitignored):
+
+- `matrix/cross_eval_epoch{20,22,24}.csv` — the three 144-cell matrices behind the
+  revision above, produced on one L4 from `f80eb17`; **committed** as
+  `docs/family_cross_eval_epoch{20,22,24}.csv`
+- `<arm>/` — 25 checkpoints per arm (epochs 0–24) plus the training log, for
+  `minjerk`, `gaussian`, `beta_asym`, `lgnb`
+- also mirrored to the Nextcloud share under `0902-family-rerun/<arm>/`
+
+The original epoch-12 study, `runs/0901-pulse-families/` (gitignored, on this machine):
 
 - `results/cross_eval_epoch12.csv` — the 144-cell matrix behind Results 2–5
 - `results/cross_eval_epoch2.csv` — the independent epoch-2 replication
