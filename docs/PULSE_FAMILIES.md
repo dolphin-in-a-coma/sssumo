@@ -204,6 +204,43 @@ sensitivity is entirely an **estimation** effect: the oracle ceiling above is
 overlap-independent, so crowding only compounds shape error once it passes through a
 detector.
 
+## Result 6 — the shape is recoverable, in both families
+
+The matrix above measures what a *frozen* wrong basis costs. The opposite question is
+whether training can find the right one. Two arms pin the generator to a known truth,
+freeze it, start the decoder from the wrong shape, and unfreeze the decoder's primitive.
+
+| arm | parameter | start | truth | learned | gap closed | peak: start → learned (truth) |
+|---|---|---|---|---|---|---|
+| `beta_learned` | `beta_mean` | 0.500 | **0.400** | **0.4032** | 96.8% | 0.500 → 0.352 (0.350) |
+| `lgnb_learned` | `lgnb_mu` | 0.000 | **−0.400** | **−0.3902** | 97.5% | 0.467 → 0.333 (0.333) |
+
+Both recover the mis-set parameter to within 2.5%, and both land the pulse peak on the
+truth to three decimals. **This is not a one-family accident.**
+
+Two details repeat across both arms and are worth knowing:
+
+- **The second parameter drifts.** `beta_precision` started *at* its truth (6.0) and
+  ended 3.7% low; `lgnb_sigma` started at 0.8 and ended 1.6% high. In each arm the
+  parameter that was wrong is recovered and the parameter that was right is slightly
+  degraded — so "the shape is recoverable" is a statement about the shape as a whole,
+  not about every coordinate independently.
+- **Nothing moves before epoch 5.** Both arms sit exactly at their initialisation for
+  epochs 0–4 and converge within one to three epochs after. That is
+  `reconstruction_loss_start: 5`: the reconstruction loss is the only gradient path to
+  the primitive, because `gradient_for_detection` is `False` and the BCE terms never
+  reach it.
+
+Two conditions have to hold for this to work at all, and both are easy to get wrong:
+the optimiser must be built over `model.parameters()` *plus* the reconstructor's, since
+the primitive lives on the reconstructor; and the generator must be a **separate frozen**
+reconstructor (`generator_primitive_*`), or training cuts the reconstruction loss by
+moving the ground truth instead of fitting it.
+
+The `lgnb_learned` checkpoints are format-2 and carry the learned primitive, so the
+recovered shape can be reloaded rather than read out of the log; the earlier
+`beta_learned` run predates that fix.
+
 ## Limits
 
 - **Training depth: resolved, and it cost one result.** The original study ran to epoch
@@ -235,17 +272,11 @@ The three arms that were in flight when this was first written have all landed.
 
 - **`sssumo-ep22-beta-asym`** — completed the epoch-22 matrix; superseded by the full
   epoch-20/22/24 reruns.
-- **`sssumo-learn-beta`** — **the shape is recoverable.** With the generator pinned to
-  Beta(2.4, 3.6) and frozen, and the decoder starting from the symmetric minimum-jerk
-  assumption, training moved `beta_mean` 0.500 → 0.403 against a truth of 0.400,
-  closing 97% of the gap; the mode moved 0.500 → 0.352 against a truth of 0.350. Both
-  duration slopes stayed at ~0, correctly. `beta_precision` started *at* the truth
-  (6.0) and drifted 3.7% low, so one parameter was recovered and one slightly degraded.
-  The shape sat frozen for epochs 0–4 and converged within a single epoch of epoch 5,
-  which is `reconstruction_loss_start` — the reconstruction loss is the only gradient
-  path to the primitive.
-- **`sssumo-learn-lgnb`** — the same recovery test in the other family. **Still not
-  run.** One family recovering its own shape is an anecdote.
+- **`sssumo-learn-beta`** — **done.** Recovered `beta_mean` 0.500 → 0.403 against a
+  truth of 0.400. See Result 6.
+- **`sssumo-learn-lgnb`** — **done**, on Colab rather than Kaggle so its checkpoints
+  carry the learned primitive. Recovered `lgnb_mu` 0.000 → −0.390 against a truth of
+  −0.400, closing 97.5% of the gap. See Result 6.
 
 Beyond those:
 
@@ -263,6 +294,10 @@ Beyond those:
   it and need their shape read out of `train_log_beta_learned.txt`.
 
 ## Where the artefacts are
+
+**`runs/0902-learn-lgnb/`** — the LGNB recovery arm (gitignored): 18 format-2
+checkpoints carrying the learned primitive, plus `config-0901-family_lgnb_learned.txt`
+with the per-epoch shape trace. Mirrored to the share under `0902-learn-lgnb/`.
 
 **`runs/0902-family-rerun/`** — the continuous 25-epoch reruns (gitignored):
 
