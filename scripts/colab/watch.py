@@ -262,13 +262,22 @@ def pull(session, files, held):
         if got == size:
             held[name] = size
             log(f"  pulled {name} ({size/1e6:.1f} MB)")
+        elif got > size:
+            # The file grew between the listing and the download. A training log
+            # is appended to continuously, so it is *never* the same size twice
+            # and an equality check can never pull it while the run is alive.
+            # Record what actually arrived: the next listing reports a larger
+            # remote, which pulls it again, and the final pull -- when nothing is
+            # writing any more -- is the one that has to match exactly.
+            held[name] = got
+            log(f"  pulled {name} ({got/1e6:.1f} MB, grew during transfer)")
         else:
             # Never let a failed transfer read as "nothing new": that is exactly
             # how this study lost two final checkpoints.
             detail = (r.stderr or r.stdout or "").strip().splitlines()
             log(f"  FAILED {name}: got {got} of {size} bytes"
                 + (f" -- {detail[-1][:140]}" if detail else ""))
-            if got != -1 and got != size:
+            if got != -1:
                 # A checkpoint still being written lists short; drop the partial
                 # so a later cycle cannot mistake it for a complete file.
                 os.remove(local)
