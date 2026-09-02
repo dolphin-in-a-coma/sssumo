@@ -42,6 +42,7 @@ colab --auth=oauth2 drivemount -s $SESSION
 colab --auth=oauth2 upload -s $SESSION scripts/colab/run.local.json /content/run.json
 colab --auth=oauth2 upload -s $SESSION scripts/train.py            /content/train.py
 colab --auth=oauth2 upload -s $SESSION scripts/colab/supervise.py  /content/supervise.py
+colab --auth=oauth2 upload -s $SESSION scripts/colab/vm_common.py /content/vm_common.py
 colab --auth=oauth2 upload -s $SESSION scripts/colab/vm_persist.py /content/vm_persist.py
 #    plus the secrets, as files -- see "The wandb key" and "The share token"
 #    for an unpushed commit, upload a verified archive instead of cloning:

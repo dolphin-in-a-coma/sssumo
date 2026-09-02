@@ -12,7 +12,10 @@ import sys
 import tarfile
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# `colab exec -f` sends this file's *text* to the kernel and sets no __file__,
+# so the import path has to be the VM location vm_common.py is uploaded to,
+# not this script's directory.
+sys.path.insert(0, "/content")
 from vm_common import load  # noqa: E402
 
 CSVS = [
