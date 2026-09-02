@@ -37,12 +37,29 @@ def profile(family, **kw):
     return s, v * len(v)          # density on normalised time (unit area)
 
 
-FIXED = {
-    "min-jerk":  ("beta",  dict(beta_mean=(0.5, 0.), beta_precision=(6., 0.))),
-    "Gaussian":  ("gaussian", dict(gaussian_centre=(0.5, 0.), gaussian_half_width=(2.5, 0.))),
-    "Beta-asym": ("beta",  dict(beta_mean=(0.40, 0.), beta_precision=(6., 0.))),
-    "LGNB":      ("lgnb",  dict(lgnb_mu=(-0.40, 0.), lgnb_sigma=(0.8, 0.))),
-}
+# Read every family from its own config rather than retyping the numbers here: the
+# first version of this figure hardcoded the class default half_width of 2.5 while the
+# study's Gaussian arm uses 3.0, and drew the wrong pulse.
+import yaml
+
+ARM_LABEL = {"minjerk": "min-jerk", "gaussian": "Gaussian",
+             "beta_asym": "Beta-asym", "lgnb": "LGNB"}
+PARAMS = {"beta": ("beta_mean", "beta_precision"),
+          "gaussian": ("gaussian_centre", "gaussian_half_width"),
+          "lgnb": ("lgnb_mu", "lgnb_sigma")}
+
+
+def from_config(arm):
+    cfg = yaml.safe_load(open(f"configs/config-0901-family_{arm}.yaml"))["primitive"]
+    fam = cfg["primitive_family"]
+    kw = {k: tuple(cfg[f"primitive_{k}"]) for k in PARAMS[fam]}
+    return fam, kw
+
+
+FIXED = {ARM_LABEL[a]: from_config(a) for a in ARM_LABEL}
+for n, (f, kw) in FIXED.items():
+    print(f"  {n:10s} {f:9s} {kw}")
+
 COL = {"min-jerk": "#2B3A67", "Gaussian": "#0B6E63",
        "Beta-asym": "#B5651D", "LGNB": "#8E3B7C"}
 
