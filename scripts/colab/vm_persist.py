@@ -42,6 +42,7 @@ import time
 # kernel happens to be. The two helpers it needs are three lines each.
 RUN_JSON = "/content/run.json"
 SETTLE_SECONDS = 5      # don't upload a file torch.save is still writing
+SETTLE_MAX_SKIPS = 3    # ... but a training log never settles, so give up waiting
 RETRIES = 4
 
 
@@ -220,22 +221,32 @@ def main():
     patterns = pcfg.get("include") or ["weights/*.pth", "logs/*.txt"]
     interval = pcfg.get("interval", 60)
     finished_at = None
+    skipped = {}
 
     while True:
         for path, name in candidates(cfg, patterns):
             size = os.path.getsize(path)
             key = f"{name}"
-            # Skip a file still being written, and one already mirrored at this
-            # exact size -- checkpoints are rewritten, logs grow.
-            if time.time() - os.path.getmtime(path) < SETTLE_SECONDS:
-                continue
             if done.get(key) == size:
+                skipped.pop(key, None)
                 continue
+            # Skip a file still being written, so a checkpoint is not caught
+            # mid-torch.save. A training log is appended to every couple of
+            # seconds and so never settles: waiting for it means never mirroring
+            # it at all, silently. After a few cycles send it anyway -- a log
+            # that is merely behind is worth having, and the next sweep sends
+            # the rest.
+            if time.time() - os.path.getmtime(path) < SETTLE_SECONDS:
+                skipped[key] = skipped.get(key, 0) + 1
+                if skipped[key] < SETTLE_MAX_SKIPS:
+                    continue
+                log(f"  {name} is always being written; mirroring it anyway")
+            skipped.pop(key, None)
             for attempt in range(1, RETRIES + 1):
                 try:
                     for sink in sinks:
                         got = sink.put(path, name)
-                        if got != size:
+                        if got < size:
                             raise RuntimeError(
                                 f"{sink.name} stored {got} of {size} bytes")
                     done[key] = size
