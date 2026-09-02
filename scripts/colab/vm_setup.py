@@ -108,8 +108,14 @@ elif source.startswith("url:"):
     run(f"find {root}/data -mindepth 2 -name '*tangential_velocity_data.csv' "
         f"-exec mv {{}} {root}/data/ \\;")
     os.remove(zip_path)
+elif source == "none":
+    # A purely synthetic run with organic_eval_every 0 never opens a CSV, and the
+    # archive is ~1.9 GB -- staging it would be the slowest step of the setup for
+    # data nothing reads.
+    print("data_source 'none': synthetic-only run, staging nothing", flush=True)
 else:
-    raise ValueError(f"data_source must start with 'drive:' or 'url:', got {source!r}")
+    raise ValueError(
+        f"data_source must be 'none' or start with 'drive:' or 'url:', got {source!r}")
 
 for name in ("weights", "logs"):
     os.makedirs(f"{root}/{name}", exist_ok=True)
