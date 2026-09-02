@@ -44,6 +44,11 @@ colab --auth=oauth2 upload -s $SESSION scripts/train.py            /content/trai
 colab --auth=oauth2 upload -s $SESSION scripts/colab/supervise.py  /content/supervise.py
 colab --auth=oauth2 upload -s $SESSION scripts/colab/vm_persist.py /content/vm_persist.py
 #    plus the secrets, as files -- see "The wandb key" and "The share token"
+#    for an unpushed commit, upload a verified archive instead of cloning:
+#      python ~/.agent/skills/remote-compute/scripts/package_git_source.py \
+#          --repo . --ref HEAD --output /tmp/sssumo-source.tgz
+#      colab ... upload -s $SESSION /tmp/sssumo-source.tgz{,.manifest.json} /content/...
+#    then set "source_archive": "/content/sssumo-source.tgz" in run.local.json
 
 # 4. clone the pinned commit, install, stage data (~1 min from Drive, longer from the URL)
 colab --auth=oauth2 exec -s $SESSION -f scripts/colab/vm_setup.py --timeout 1800

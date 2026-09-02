@@ -3,10 +3,13 @@
 Run once per session:
     colab --auth=oauth2 exec -s <session> -f scripts/colab/vm_setup.py --timeout 1800
 """
+import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -36,9 +39,29 @@ cfg = load()
 root = cfg["root_dir"]
 
 # --- source, pinned so results are attributable to an exact commit ------------
-if not os.path.exists("/content/sssumo/.git"):
-    assert run(f"git clone -q {cfg['repo']} /content/sssumo") == 0
-assert run(f"cd /content/sssumo && git checkout -q {cfg['commit']} && git rev-parse HEAD") == 0
+# Two transports. A clone is simplest when the commit is on a remote; an uploaded
+# archive from package_git_source.py also carries commits that are not, so a run
+# does not have to be published before it can be reproduced. The archive is
+# checked against its manifest before anything is extracted -- a truncated upload
+# would otherwise install silently and be attributed to the manifest's commit.
+archive = cfg.get("source_archive")
+if archive:
+    if not os.path.isdir("/content/sssumo"):
+        manifest = json.load(open(f"{archive}.manifest.json"))
+        digest = hashlib.sha256()
+        with open(archive, "rb") as fh:
+            for block in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(block)
+        assert digest.hexdigest() == manifest["sha256"], "source archive checksum mismatch"
+        with tarfile.open(archive) as tar:
+            tar.extractall("/content", filter="data")
+        os.rename(f"/content/{manifest['prefix'].rstrip('/')}", "/content/sssumo")
+        print("verified source archive, commit", manifest["commit"], flush=True)
+else:
+    if not os.path.exists("/content/sssumo/.git"):
+        assert run(f"git clone -q {cfg['repo']} /content/sssumo") == 0
+    assert run(
+        f"cd /content/sssumo && git checkout -q {cfg['commit']} && git rev-parse HEAD") == 0
 run("cd /content/sssumo && pip install -q . 2>&1 | tail -5")
 
 import torch  # noqa: E402  (only meaningful after the install above)

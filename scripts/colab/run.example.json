@@ -4,6 +4,7 @@
   "session": "sssumo-pretrain",
   "repo": "https://github.com/dolphin-in-a-coma/sssumo.git",
   "commit": "319df0cb1905a5374b0d3580791a265bd45ac6a7",
+  "_source_note": "'repo'+'commit' clone from a remote. To run a commit that is not on one -- without publishing it first -- build an archive with the remote-compute skill's package_git_source.py, upload it plus its .manifest.json, and set 'source_archive' to the VM path instead; vm_setup.py then verifies its sha256 before extracting and ignores repo/commit.",
 
   "root_dir": "/content/sssumo_run",
   "data_source": "url:https://datacloud.helsinki.fi/public.php/dav/files/bE7SP7xCrSyApeC/?accept=zip",
