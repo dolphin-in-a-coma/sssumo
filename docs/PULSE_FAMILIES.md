@@ -27,10 +27,15 @@ frozen special case of a family.
 
 | arm | family | parameters | peak | skew | sd |
 |---|---|---|---|---|---|
-| `minjerk` | beta | mean 0.50, precision 6 | 0.50 | 0.000 | 0.189 |
-| `gaussian` | gaussian | half-width 3σ | 0.47 | 0.000 | 0.164 |
-| `beta_asym` | beta | mean 0.40, precision 6 | 0.33 | +0.269 | 0.185 |
-| `lgnb` | lgnb | mu −0.40, sigma 0.8 | 0.33 | +0.278 | 0.172 |
+| `minjerk` | beta | mean 0.50, precision 6 | 0.500 | 0.000 | 0.189 |
+| `gaussian` | gaussian | centre 0.5, truncated at ±3σ | 0.500 | 0.000 | 0.164 |
+| `beta_asym` | beta | mean 0.40, precision 6 | 0.350 | +0.270 | 0.185 |
+| `lgnb` | lgnb | mu −0.40, sigma 0.8 | 0.359 | +0.278 | 0.172 |
+
+*Peak, skew and sd are of the continuous density, computed grid-free. An earlier version
+of this table gave peaks of 0.47 / 0.33 / 0.33: those were `argmax` on the primitive's
+own 30-sample render, where a peak can only land on one of 30 positions. Skew and sd
+were already continuous and are unchanged.*
 
 Two symmetric, two asymmetric. The asymmetric pair is matched to *each other* on peak
 and skew, so a contrast between them isolates shape family from amount of asymmetry.
@@ -212,13 +217,14 @@ freeze it, start the decoder from the wrong shape, and unfreeze the decoder's pr
 
 | arm | parameter | start | truth | learned | gap closed | peak: start → learned (truth) |
 |---|---|---|---|---|---|---|
-| `beta_learned` | `beta_mean` | 0.500 | **0.400** | **0.4032** | 96.8% | 0.500 → 0.352 (0.350) |
-| `lgnb_learned` | `lgnb_mu` | 0.000 | **−0.400** | **−0.3902** | 97.5% | 0.467 → 0.333 (0.333) |
+| `beta_learned` | `beta_mean` | 0.500 | **0.400** | **0.4032** | 96.8% | 0.500 → 0.354 (0.350) |
+| `lgnb_learned` | `lgnb_mu` | 0.000 | **−0.400** | **−0.3902** | 97.5% | 0.500 → 0.361 (0.359) |
 
-Both recover the mis-set parameter to within 2.5%, and both land the pulse peak on the
-truth. **This is not a one-family accident.** Peaks are quoted at a submovement duration
-of 30 samples; the shape is mildly duration-dependent for the learned arms (see below)
-and the numbers shift in the third decimal across the 5–60 range.
+Both recover the mis-set parameter to within 2.5%, and both land the pulse peak within
+0.004 of the truth from a start 0.15 away. **This is not a one-family accident.** Peaks
+are continuous-density modes with the parameters evaluated at the mean training duration
+of 32.5 samples; because the learned arms have a nonzero duration slope their peaks move
+in the third decimal across the 5–60 range (Beta 0.352→0.355, LGNB 0.360→0.362).
 
 ![pulse profiles](pulse_profiles.png)
 
