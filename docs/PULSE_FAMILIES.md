@@ -278,8 +278,12 @@ The original epoch-12 study, `runs/0901-pulse-families/` (gitignored, on this ma
 - `results/cross_eval_epoch12.csv` — the 144-cell matrix behind Results 2–5
 - `results/cross_eval_epoch2.csv` — the independent epoch-2 replication
 - `results/oracle_ceiling.csv`, `results/training_metrics.csv`, `results/train_log_*.txt`
-- `results/pulse_report.html` — published at
-  https://claude.ai/code/artifact/46e97258-052e-44fe-82f1-ecaa3a5c7243
+- `results/pulse_report.html` — the **superseded** epoch-12 report, kept only as the
+  record of what was claimed; its title ("Wrong Pulse, Right Fit") is the retracted
+  claim. The live report at
+  https://claude.ai/code/artifact/46e97258-052e-44fe-82f1-ecaa3a5c7243 has been
+  rewritten from the epoch-20 matrices as "Blind to the Basis" and carries the
+  retraction; a copy is in `runs/0902-family-rerun/results/pulse_report.html`
 - `weights/` — epoch 12 for all four arms, epoch 22 for three, epoch 24 for lgnb
 
 Off-machine backup: private Kaggle dataset `dolphininacoma/sssumo-family-ep12` holds the
